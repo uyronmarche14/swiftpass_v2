@@ -21,7 +21,6 @@ export default function LoginScreen() {
   const { login, isLoading } = useAuth();
 
   const validateForm = () => {
-    console.log("Validating form with:", { email, password });
     const newErrors = { email: "", password: "" };
     let isValid = true;
 
@@ -39,16 +38,19 @@ export default function LoginScreen() {
     }
 
     setErrors(newErrors);
-    console.log("Validation result:", { isValid, errors: newErrors });
     return isValid;
   };
 
   const handleLogin = async () => {
-    console.log("Login button clicked");
     if (validateForm()) {
-      console.log("Form is valid, attempting login");
-      const success = await login(email, password);
-      console.log("Login result:", success);
+      try {
+        const success = await login(email, password);
+        if (!success) {
+          Alert.alert("Login Error", "Invalid email or password");
+        }
+      } catch (error) {
+        Alert.alert("Error", "An unexpected error occurred during login");
+      }
     }
   };
 

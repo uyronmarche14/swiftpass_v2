@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { Colors } from "../constants/Colors";
 import { Ionicons } from "@expo/vector-icons";
 import { CustomInput } from "../components/ui/CustomInput";
+import { useAuth } from "../context/AuthContext";
 
 interface FormData {
   fullName: string;
@@ -29,7 +30,7 @@ interface FormErrors {
 }
 
 export default function RegisterScreen() {
-  const [isLoading, setIsLoading] = useState(false);
+  const { register, isLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formData, setFormData] = useState<FormData>({
@@ -79,18 +80,22 @@ export default function RegisterScreen() {
     setErrors(newErrors);
 
     if (Object.keys(newErrors).length === 0) {
-      setIsLoading(true);
       try {
-        // Simulate registration delay
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        router.replace("/(tabs)/dashboard");
+        const success = await register({
+          fullName: formData.fullName,
+          email: formData.email,
+          studentId: formData.studentId,
+          password: formData.password,
+        });
+
+        if (!success) {
+          Alert.alert("Registration Error", "Failed to create account");
+        }
       } catch (error) {
         Alert.alert(
           "Error",
           "An unexpected error occurred during registration"
         );
-      } finally {
-        setIsLoading(false);
       }
     }
   };

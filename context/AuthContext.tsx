@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { router } from "expo-router";
 import { Alert } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -17,48 +18,65 @@ interface RegisterData {
   password: string;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+// For development, use localhost with the correct port
+const API_URL = "http://192.168.2.107:5000/api"; // For your local network
+// const API_URL = "http://10.0.2.2:5000/api"; // For Android emulator
+// const API_URL = "http://localhost:5000/api"; // For iOS simulator
 
-// Mock user data for testing
-const mockUsers = [
-  {
-    email: "ronmarcheuy@gmail.com",
-    password: "201114",
-    fullName: "Test User",
-    studentId: "STU123456",
-  },
-];
+const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const login = async (email: string, password: string) => {
-    console.log("Login attempt with:", { email, password });
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
     try {
-      setIsLoading(true);
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Check if user exists in mock data
-      const user = mockUsers.find(
-        (u) => u.email === email && u.password === password
-      );
-      console.log("User found:", user);
-
+      const user = await AsyncStorage.getItem("user");
       if (user) {
         setIsAuthenticated(true);
-        console.log("Login successful, redirecting to dashboard");
-        router.replace("/(tabs)/dashboard");
-        return true;
-      } else {
-        console.log("Invalid credentials");
-        Alert.alert("Login Error", "Invalid email or password");
-        return false;
       }
     } catch (error) {
-      console.error("Login error:", error);
-      Alert.alert("Login Error", "An unexpected error occurred");
+      console.error("Error checking auth:", error);
+    }
+  };
+
+  const handleApiError = (error: any) => {
+    console.error("API Error:", error);
+    if (error.message === "Network request failed") {
+      return "Unable to connect to the server. Please check if the server is running and try again.";
+    }
+    return error.message || "An unexpected error occurred";
+  };
+
+  const login = async (email: string, password: string) => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Login failed");
+      }
+
+      const data = await response.json();
+      await AsyncStorage.setItem("user", JSON.stringify(data.user));
+      setIsAuthenticated(true);
+      router.replace("/(tabs)/dashboard");
+      return true;
+    } catch (error) {
+      const errorMessage = handleApiError(error);
+      Alert.alert("Login Error", errorMessage);
       return false;
     } finally {
       setIsLoading(false);
@@ -68,33 +86,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (userData: RegisterData) => {
     try {
       setIsLoading(true);
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(userData),
+      });
 
-      // Check if email already exists
-      const userExists = mockUsers.some((u) => u.email === userData.email);
-
-      if (userExists) {
-        Alert.alert("Registration Error", "Email already exists");
-        return false;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Registration failed");
       }
 
-      // Add new user to mock data
-      mockUsers.push(userData);
+      const data = await response.json();
+      await AsyncStorage.setItem("user", JSON.stringify(data.user));
       setIsAuthenticated(true);
-      router.replace("/(tabs)/dashboard");
+      router.replace("/login");
       return true;
     } catch (error) {
-      Alert.alert("Registration Error", "An unexpected error occurred");
+      const errorMessage = handleApiError(error);
+      Alert.alert("Registration Error", errorMessage);
       return false;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const logout = () => {
-    setIsAuthenticated(false);
-    router.replace("/login");
+  const logout = async () => {
+    try {
+      await AsyncStorage.removeItem("user");
+      setIsAuthenticated(false);
+      router.replace("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   };
 
   return (
