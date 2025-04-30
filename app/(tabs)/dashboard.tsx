@@ -1,130 +1,318 @@
-import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, StatusBar } from "react-native";
-import { CustomButton } from "../../components/ui/CustomButton";
-import { QRCodeGenerator } from "../../components/ui/QRCodeGenerator";
+import React, { useEffect, useState, useCallback } from "react";
+import {
+  View,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Image,
+  RefreshControl,
+  ActivityIndicator,
+  Dimensions,
+  StatusBar,
+  SafeAreaView,
+} from "react-native";
+import { useAuth } from "../../context/AuthContext";
+import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../constants/Colors";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 
-export default function DashboardScreen() {
-  const [isQRVisible, setIsQRVisible] = useState(false);
+const { width } = Dimensions.get("window");
 
-  const handleLogout = () => {
-    router.replace("/login");
+export default function Dashboard() {
+  const { user, userProfile, refreshUserProfile, isLoading, getQRCode } =
+    useAuth();
+  const [refreshing, setRefreshing] = useState(false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    await refreshUserProfile();
+    loadQRCode();
   };
 
-  const mockStudentData = {
-    id: "STU123456",
-    name: "John Doe",
-    validUntil: "2:30 PM",
+  const loadQRCode = async () => {
+    try {
+      setQrLoading(true);
+      const qrData = await getQRCode();
+      setQrCode(qrData);
+    } catch (error) {
+      console.error("Error loading QR code:", error);
+    } finally {
+      setQrLoading(false);
+    }
   };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
+  // Get current date and time
+  const getCurrentDate = () => {
+    const date = new Date();
+    const options: Intl.DateTimeFormatOptions = {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    };
+    return date.toLocaleDateString("en-US", options);
+  };
+
+  // Mock upcoming classes
+  const upcomingClasses = [
+    {
+      id: "1",
+      time: "09:00 AM",
+      name: "Computer Science 101",
+      location: "Computer Lab",
+      duration: "2 hours",
+    },
+    {
+      id: "2",
+      time: "02:00 PM",
+      name: "Physics 201",
+      location: "Physics Lab",
+      duration: "1.5 hours",
+    },
+  ];
+
+  // Mock notifications
+  const notifications = [
+    {
+      id: "1",
+      message: "Your attendance rate is 95% this month",
+      time: "2 hours ago",
+      type: "success",
+    },
+    {
+      id: "2",
+      message: "Physics 201 class rescheduled to 2:00 PM",
+      time: "1 day ago",
+      type: "info",
+    },
+    {
+      id: "3",
+      message: "You have missed Chemistry 101 class",
+      time: "2 days ago",
+      type: "warning",
+    },
+  ];
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case "success":
+        return <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />;
+      case "warning":
+        return <Ionicons name="alert-circle" size={24} color="#FFC107" />;
+      case "info":
+        return <Ionicons name="information-circle" size={24} color="#2196F3" />;
+      default:
+        return <Ionicons name="notifications" size={24} color="#757575" />;
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.light.primary} />
+        <Text style={styles.loadingText}>Loading your dashboard...</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={styles.container}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={Colors.light.primary}
+      />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>SwiftPass</Text>
-        <Ionicons
-          name="log-out-outline"
-          size={24}
-          color="#fff"
-          onPress={handleLogout}
-          style={styles.logoutIcon}
-        />
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* QR Code Status Section */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="qr-code" size={22} color={Colors.light.tint} />
-            <Text style={styles.cardTitle}>QR Code Status</Text>
-          </View>
-          <View style={styles.cardDivider} />
-          <View style={styles.cardContent}>
-            <Text style={styles.highlight}>
-              Valid until: {mockStudentData.validUntil}
+      <LinearGradient
+        colors={[Colors.light.primary, "#2a6fc5"]}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.greeting}>Welcome back,</Text>
+            <Text style={styles.username}>
+              {userProfile?.full_name || "Student"}
             </Text>
-            <Text style={styles.subText}>Auto-refresh in 15 minutes</Text>
-            <View style={styles.generateButton}>
-              <CustomButton
-                title="Generate QR Code"
-                onPress={() => setIsQRVisible(true)}
+          </View>
+
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => router.push("/(tabs)")}
+          >
+            <Ionicons name="person-circle" size={36} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.dateText}>{getCurrentDate()}</Text>
+      </LinearGradient>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {/* Quick Access Buttons */}
+        <View style={styles.quickAccessContainer}>
+          <TouchableOpacity
+            style={styles.quickAccessButton}
+            onPress={() => router.push("/(tabs)/qrcode")}
+          >
+            <View style={styles.quickAccessIconContainer}>
+              <Ionicons name="qr-code" size={24} color={Colors.light.primary} />
+            </View>
+            <Text style={styles.quickAccessText}>My QR Code</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickAccessButton}
+            onPress={() => router.push("/(tabs)/attendance")}
+          >
+            <View style={styles.quickAccessIconContainer}>
+              <Ionicons
+                name="calendar"
+                size={24}
+                color={Colors.light.primary}
               />
             </View>
-          </View>
+            <Text style={styles.quickAccessText}>Attendance</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickAccessButton}
+            onPress={() => router.push("/(tabs)/access")}
+          >
+            <View style={styles.quickAccessIconContainer}>
+              <Ionicons name="key" size={24} color={Colors.light.primary} />
+            </View>
+            <Text style={styles.quickAccessText}>Access</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.quickAccessButton}>
+            <View style={styles.quickAccessIconContainer}>
+              <Ionicons
+                name="settings"
+                size={24}
+                color={Colors.light.primary}
+              />
+            </View>
+            <Text style={styles.quickAccessText}>Settings</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Today's Activity */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="time-outline" size={22} color={Colors.light.tint} />
-            <Text style={styles.cardTitle}>Today's Activity</Text>
+        {/* Today's Schedule */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Today's Schedule</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.cardDivider} />
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>3</Text>
-              <Text style={styles.statLabel}>Lab Entries</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>2</Text>
-              <Text style={styles.statLabel}>Lab Exits</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>4h</Text>
-              <Text style={styles.statLabel}>Lab Time</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>2</Text>
-              <Text style={styles.statLabel}>Labs Visited</Text>
-            </View>
-          </View>
-        </View>
 
-        {/* Access Status */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={22}
-              color={Colors.light.tint}
-            />
-            <Text style={styles.cardTitle}>Access Status</Text>
-          </View>
-          <View style={styles.cardDivider} />
-          <View style={styles.cardContent}>
-            <Text style={styles.accessStatus}>✓ Authorized for Lab Access</Text>
-            <View style={styles.labContainer}>
-              <View style={styles.labChip}>
-                <Text style={styles.labChipText}>Computer Lab</Text>
+          {upcomingClasses.length > 0 ? (
+            upcomingClasses.map((classItem) => (
+              <View key={classItem.id} style={styles.scheduleCard}>
+                <View style={styles.scheduleTimeContainer}>
+                  <Text style={styles.scheduleTime}>{classItem.time}</Text>
+                  <Text style={styles.scheduleDuration}>
+                    {classItem.duration}
+                  </Text>
+                </View>
+
+                <View style={styles.scheduleDetails}>
+                  <Text style={styles.scheduleTitle}>{classItem.name}</Text>
+                  <View style={styles.scheduleLocationContainer}>
+                    <Ionicons name="location" size={16} color="#757575" />
+                    <Text style={styles.scheduleLocation}>
+                      {classItem.location}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity style={styles.scheduleAction}>
+                  <Ionicons name="chevron-forward" size={20} color="#bbb" />
+                </TouchableOpacity>
               </View>
-              <View style={styles.labChip}>
-                <Text style={styles.labChipText}>Physics Lab</Text>
-              </View>
+            ))
+          ) : (
+            <View style={styles.emptyScheduleContainer}>
+              <Ionicons name="calendar-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyScheduleText}>
+                No classes scheduled for today
+              </Text>
             </View>
+          )}
+        </View>
+
+        {/* Notifications */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Notifications</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+
+          {notifications.map((notification) => (
+            <View key={notification.id} style={styles.notificationCard}>
+              <View style={styles.notificationIconContainer}>
+                {getNotificationIcon(notification.type)}
+              </View>
+
+              <View style={styles.notificationContent}>
+                <Text style={styles.notificationMessage}>
+                  {notification.message}
+                </Text>
+                <Text style={styles.notificationTime}>{notification.time}</Text>
+              </View>
+
+              <TouchableOpacity style={styles.notificationAction}>
+                <Ionicons name="ellipsis-vertical" size={20} color="#bbb" />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+
+        {/* Stats Summary */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statsCard}>
+            <View style={styles.statsIconContainer}>
+              <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+            </View>
+            <Text style={styles.statsNumber}>95%</Text>
+            <Text style={styles.statsLabel}>Attendance</Text>
+          </View>
+
+          <View style={styles.statsCard}>
+            <View style={styles.statsIconContainer}>
+              <Ionicons name="time" size={24} color="#FFC107" />
+            </View>
+            <Text style={styles.statsNumber}>3</Text>
+            <Text style={styles.statsLabel}>Late Arrivals</Text>
+          </View>
+
+          <View style={styles.statsCard}>
+            <View style={styles.statsIconContainer}>
+              <Ionicons name="calendar" size={24} color="#2196F3" />
+            </View>
+            <Text style={styles.statsNumber}>24</Text>
+            <Text style={styles.statsLabel}>Classes</Text>
           </View>
         </View>
-
-        {/* Logout Button (For smaller screens) */}
-        <View style={styles.mobileLogoutContainer}>
-          <CustomButton
-            title="Logout"
-            onPress={handleLogout}
-            variant="secondary"
-          />
-        </View>
-
-        {/* QR Code Modal */}
-        <QRCodeGenerator
-          isVisible={isQRVisible}
-          onClose={() => setIsQRVisible(false)}
-          studentData={mockStudentData}
-        />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -135,115 +323,217 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: Colors.light.tint,
+    paddingTop: 20,
+    paddingBottom: 30,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  headerContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
+  greeting: {
+    fontSize: 16,
+    color: "rgba(255, 255, 255, 0.8)",
+  },
+  username: {
+    fontSize: 24,
+    fontWeight: "bold",
     color: "#fff",
   },
-  logoutIcon: {
-    padding: 5,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 24,
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-    padding: 20,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-    marginLeft: 10,
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: "#eee",
-    marginBottom: 15,
-  },
-  cardContent: {
-    paddingVertical: 5,
-  },
-  highlight: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: Colors.light.tint,
-    marginBottom: 4,
-  },
-  subText: {
+  dateText: {
+    marginTop: 8,
+    color: "rgba(255, 255, 255, 0.8)",
     fontSize: 14,
-    color: "#888",
   },
-  statsGrid: {
+  profileButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#666",
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 30,
+  },
+  quickAccessContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    marginBottom: 24,
   },
-  statItem: {
-    width: "48%",
-    backgroundColor: "#f8f9fa",
-    padding: 16,
-    marginBottom: 12,
-    borderRadius: 12,
+  quickAccessButton: {
+    width: (width - 50) / 4,
+    alignItems: "center",
   },
-  statNumber: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: Colors.light.tint,
-  },
-  statLabel: {
-    fontSize: 14,
-    color: "#888",
-    marginTop: 4,
-  },
-  accessStatus: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: Colors.light.tint,
-    marginBottom: 12,
-  },
-  labContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  labChip: {
-    backgroundColor: "#FFF0F0",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 50,
-    marginRight: 8,
+  quickAccessIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(33, 150, 243, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 8,
   },
-  labChipText: {
-    color: Colors.light.tint,
+  quickAccessText: {
+    fontSize: 12,
+    color: "#333",
+    textAlign: "center",
+  },
+  sectionContainer: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+  },
+  seeAllText: {
     fontSize: 14,
+    color: Colors.light.primary,
   },
-  mobileLogoutContainer: {
-    marginBottom: 30,
-    display: "none",
+  scheduleCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  generateButton: {
+  scheduleTimeContainer: {
+    width: 80,
+    alignItems: "center",
+  },
+  scheduleTime: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: Colors.light.primary,
+  },
+  scheduleDuration: {
+    fontSize: 12,
+    color: "#757575",
+    marginTop: 4,
+  },
+  scheduleDetails: {
+    flex: 1,
+    paddingHorizontal: 12,
+  },
+  scheduleTitle: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#333",
+    marginBottom: 4,
+  },
+  scheduleLocationContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  scheduleLocation: {
+    fontSize: 13,
+    color: "#757575",
+    marginLeft: 4,
+  },
+  scheduleAction: {
+    padding: 4,
+  },
+  emptyScheduleContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 30,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+  },
+  emptyScheduleText: {
     marginTop: 16,
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+  },
+  notificationCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  notificationIconContainer: {
+    marginRight: 12,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationMessage: {
+    fontSize: 14,
+    color: "#333",
+    marginBottom: 4,
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: "#757575",
+  },
+  notificationAction: {
+    padding: 4,
+  },
+  statsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  statsCard: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    marginHorizontal: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  statsIconContainer: {
+    marginBottom: 8,
+  },
+  statsNumber: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#333",
+  },
+  statsLabel: {
+    fontSize: 12,
+    color: "#757575",
+    textAlign: "center",
   },
 });

@@ -1,30 +1,58 @@
 import { Tabs } from "expo-router";
-import { MaterialIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../constants/Colors";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
+        tabBarActiveTintColor: "#007AFF",
+        tabBarInactiveTintColor: "#8E8E93",
+        tabBarStyle: {
+          backgroundColor: "#fff",
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom,
+          borderTopWidth: 1,
+          borderTopColor: "#E5E5E5",
+          elevation: 0,
+        },
+        tabBarIconStyle: {
+          marginTop: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          marginBottom: 6,
+        },
         headerShown: false,
-        tabBarActiveTintColor: Colors.light.tint,
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="dashboard"
         options={{
           title: "Home",
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="home" size={24} color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="dashboard"
+        name="qrcode"
         options={{
-          title: "Dashboard",
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="dashboard" size={24} color={color} />
+          title: "QR Code",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="qr-code" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="access"
+        options={{
+          title: "Access",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="key" size={size} color={color} />
           ),
         }}
       />
@@ -32,8 +60,8 @@ export default function TabLayout() {
         name="attendance"
         options={{
           title: "Attendance",
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="history" size={24} color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar" size={size} color={color} />
           ),
         }}
       />

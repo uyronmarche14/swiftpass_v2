@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
@@ -6,12 +6,14 @@ import {
   ActivityIndicator,
   Text,
   TouchableOpacity,
+  ScrollView,
+  Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { Colors } from "../constants/Colors";
-import { Ionicons } from "@expo/vector-icons";
 import { CustomInput } from "../components/ui/CustomInput";
 import { useAuth } from "../context/AuthContext";
+import { Ionicons } from "@expo/vector-icons";
 
 interface FormData {
   fullName: string;
@@ -19,6 +21,7 @@ interface FormData {
   studentId: string;
   password: string;
   confirmPassword: string;
+  course: string;
 }
 
 interface FormErrors {
@@ -27,9 +30,10 @@ interface FormErrors {
   studentId?: string;
   password?: string;
   confirmPassword?: string;
+  course?: string;
 }
 
-export default function RegisterScreen() {
+export default function Register() {
   const { register, isLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -39,6 +43,7 @@ export default function RegisterScreen() {
     studentId: "",
     password: "",
     confirmPassword: "",
+    course: "",
   });
   const [errors, setErrors] = useState<FormErrors>({});
 
@@ -81,17 +86,36 @@ export default function RegisterScreen() {
 
     if (Object.keys(newErrors).length === 0) {
       try {
-        const success = await register({
-          fullName: formData.fullName,
+        console.log("Attempting to register with:", {
           email: formData.email,
+          fullName: formData.fullName,
           studentId: formData.studentId,
-          password: formData.password,
+          course: formData.course,
         });
 
-        if (!success) {
-          Alert.alert("Registration Error", "Failed to create account");
+        const success = await register(
+          formData.email,
+          formData.password,
+          formData.fullName,
+          formData.studentId,
+          formData.course
+        );
+
+        if (success) {
+          // Show success message before navigating
+          Alert.alert(
+            "Registration Successful",
+            "Your account has been created and you are now logged in.",
+            [{ text: "OK" }]
+          );
+        } else {
+          Alert.alert(
+            "Registration Error",
+            "Failed to create account. Please check the console for more details."
+          );
         }
       } catch (error) {
+        console.error("Error during registration:", error);
         Alert.alert(
           "Error",
           "An unexpected error occurred during registration"
@@ -109,159 +133,190 @@ export default function RegisterScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-        <Ionicons name="chevron-back" size={24} color={Colors.light.text} />
-      </TouchableOpacity>
-
-      <Text style={styles.title}>Create Account</Text>
-
-      <View style={styles.formContainer}>
-        <CustomInput
-          label="Full Name"
-          value={formData.fullName}
-          onChangeText={(text) => setFormData({ ...formData, fullName: text })}
-          placeholder="Enter your full name"
-          error={errors.fullName}
-        />
-
-        <CustomInput
-          label="Email"
-          value={formData.email}
-          onChangeText={(text) => setFormData({ ...formData, email: text })}
-          placeholder="email@example.com"
-          error={errors.email}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-
-        <CustomInput
-          label="Student ID"
-          value={formData.studentId}
-          onChangeText={(text) => setFormData({ ...formData, studentId: text })}
-          placeholder="Enter your student ID"
-          error={errors.studentId}
-          autoCapitalize="characters"
-          maxLength={10}
-        />
-
-        <CustomInput
-          label="Password"
-          value={formData.password}
-          onChangeText={(text) => setFormData({ ...formData, password: text })}
-          placeholder="Create a password"
-          error={errors.password}
-          secureTextEntry={!showPassword}
-          rightIcon={
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-              <Ionicons
-                name={showPassword ? "eye-off" : "eye"}
-                size={24}
-                color={Colors.light.icon}
-              />
-            </TouchableOpacity>
-          }
-        />
-
-        <CustomInput
-          label="Confirm Password"
-          value={formData.confirmPassword}
-          onChangeText={(text) =>
-            setFormData({ ...formData, confirmPassword: text })
-          }
-          placeholder="Confirm your password"
-          error={errors.confirmPassword}
-          secureTextEntry={!showConfirmPassword}
-          rightIcon={
-            <TouchableOpacity
-              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-            >
-              <Ionicons
-                name={showConfirmPassword ? "eye-off" : "eye"}
-                size={24}
-                color={Colors.light.icon}
-              />
-            </TouchableOpacity>
-          }
-        />
-
-        <TouchableOpacity
-          style={[styles.registerButton, isLoading && styles.buttonDisabled]}
-          onPress={handleRegister}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.registerText}>Create Account</Text>
-          )}
+    <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <View style={styles.container}>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+          <Ionicons name="chevron-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.loginContainer}
-          onPress={handleSignInPress}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.loginText}>
-            Already have an account?{" "}
-            <Text style={styles.loginTextBold}>Sign In</Text>
-          </Text>
-        </TouchableOpacity>
+        <Text style={styles.title}>Create Account</Text>
+        <Text style={styles.subtitle}>
+          Register to access your attendance QR code
+        </Text>
+
+        <View style={styles.formContainer}>
+          <CustomInput
+            label="Full Name"
+            value={formData.fullName}
+            onChangeText={(text) =>
+              setFormData({ ...formData, fullName: text })
+            }
+            placeholder="Enter your full name"
+            error={errors.fullName}
+          />
+
+          <CustomInput
+            label="Email"
+            value={formData.email}
+            onChangeText={(text) => setFormData({ ...formData, email: text })}
+            placeholder="email@example.com"
+            error={errors.email}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+
+          <CustomInput
+            label="Student ID"
+            value={formData.studentId}
+            onChangeText={(text) =>
+              setFormData({ ...formData, studentId: text })
+            }
+            placeholder="Enter your student ID"
+            error={errors.studentId}
+            autoCapitalize="characters"
+            maxLength={10}
+          />
+
+          <CustomInput
+            label="Course (Optional)"
+            value={formData.course}
+            onChangeText={(text) => setFormData({ ...formData, course: text })}
+            placeholder="e.g. Computer Science"
+            error={errors.course}
+          />
+
+          <CustomInput
+            label="Password"
+            value={formData.password}
+            onChangeText={(text) =>
+              setFormData({ ...formData, password: text })
+            }
+            placeholder="Create a password"
+            error={errors.password}
+            secureTextEntry={!showPassword}
+            rightIcon={
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                <Ionicons
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={24}
+                  color={Colors.light.icon}
+                />
+              </TouchableOpacity>
+            }
+          />
+
+          <CustomInput
+            label="Confirm Password"
+            value={formData.confirmPassword}
+            onChangeText={(text) =>
+              setFormData({ ...formData, confirmPassword: text })
+            }
+            placeholder="Confirm your password"
+            error={errors.confirmPassword}
+            secureTextEntry={!showConfirmPassword}
+            rightIcon={
+              <TouchableOpacity
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              >
+                <Ionicons
+                  name={showConfirmPassword ? "eye-off" : "eye"}
+                  size={24}
+                  color={Colors.light.icon}
+                />
+              </TouchableOpacity>
+            }
+          />
+
+          <TouchableOpacity
+            style={[styles.registerButton, isLoading && styles.buttonDisabled]}
+            onPress={handleRegister}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.registerText}>Create Account</Text>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.signInContainer}>
+            <Text style={styles.signInText}>Already have an account? </Text>
+            <TouchableOpacity onPress={handleSignInPress}>
+              <Text style={styles.signInLink}>Sign In</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContainer: {
+    flexGrow: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background,
-    padding: 24,
+    padding: 20,
+    backgroundColor: "#fff",
   },
   backButton: {
-    marginTop: 12,
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "flex-start",
+    marginTop: 40,
+    marginBottom: 20,
   },
   title: {
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: "bold",
     color: Colors.light.text,
-    marginTop: 40,
-    marginBottom: 40,
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#777",
+    marginBottom: 24,
   },
   formContainer: {
     width: "100%",
   },
+  inputError: {
+    borderColor: Colors.light.error,
+  },
+  label: {
+    fontSize: 16,
+    color: Colors.light.text,
+    marginBottom: 5,
+  },
+  errorText: {
+    color: Colors.light.error,
+    fontSize: 12,
+    marginTop: 5,
+  },
   registerButton: {
-    backgroundColor: Colors.light.tint,
-    borderRadius: 12,
-    height: 56,
-    justifyContent: "center",
+    backgroundColor: Colors.light.primary,
+    borderRadius: 8,
+    paddingVertical: 16,
     alignItems: "center",
     marginTop: 24,
-  },
-  registerText: {
-    color: Colors.light.background,
-    fontSize: 16,
-    fontWeight: "bold",
+    marginBottom: 10,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
-  loginContainer: {
-    marginTop: 20,
-    alignItems: "center",
-    padding: 12,
-  },
-  loginText: {
+  registerText: {
+    color: "#fff",
+    fontWeight: "bold",
     fontSize: 16,
+  },
+  signInContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 15,
+  },
+  signInText: {
     color: Colors.light.text,
   },
-  loginTextBold: {
-    color: Colors.light.tint,
-    fontWeight: "600",
+  signInLink: {
+    color: Colors.light.primary,
+    fontWeight: "bold",
   },
 });
