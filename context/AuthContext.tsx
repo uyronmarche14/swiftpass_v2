@@ -467,7 +467,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const getQRCode = async () => {
     try {
       if (!user) {
-        Alert.alert("Error", "You need to be logged in to get a QR code");
+        console.error("Error: You need to be logged in to get a QR code");
         return null;
       }
 
@@ -515,14 +515,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return JSON.stringify(qrCodeData.qr_data);
     } catch (error: unknown) {
       console.error("QR code error:", error);
-      if (error instanceof Error) {
-        Alert.alert("QR Code Error", error.message);
-      } else {
-        Alert.alert(
-          "Error",
-          "An unexpected error occurred while retrieving your QR code"
-        );
+
+      // Only log to console, don't show alert to user
+      // Generate fallback QR code for the user if possible
+      if (userProfile) {
+        const fallbackQrData = {
+          userId: user?.id,
+          studentId: userProfile.student_id,
+          name: userProfile.full_name,
+          course: userProfile.course || "Not Specified",
+          section: userProfile.section || "Not Specified",
+          generated: "fallback",
+        };
+        return JSON.stringify(fallbackQrData);
       }
+
       return null;
     }
   };
