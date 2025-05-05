@@ -22,6 +22,7 @@ import { CustomModal } from "../../components/ui/Modal";
 
 const { width } = Dimensions.get("window");
 
+// Lab data structure after processing
 interface Lab {
   id: string;
   name: string;
@@ -33,27 +34,25 @@ interface Lab {
   section: string;
 }
 
+// Type for the lab data from Supabase
 interface SupabaseLab {
-  lab_id: string;
-  labs: {
+  id: string;
+  name: string;
+  section: string | null;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  subjects: {
     id: string;
     name: string;
-    day_of_week: string;
-    start_time: string;
-    end_time: string;
-    subjects?: {
-      name: string;
-      code: string;
-    };
-  };
+    code: string;
+  } | null;
 }
 
 export default function Dashboard() {
   const { user, userProfile, refreshUserProfile, isLoading, getQRCode } =
     useAuth();
   const [refreshing, setRefreshing] = useState(false);
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [qrLoading, setQrLoading] = useState(false);
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedDay, setSelectedDay] = useState(getCurrentDayOfWeek());
   const [isLoadingLabs, setIsLoadingLabs] = useState(true);
@@ -68,23 +67,24 @@ export default function Dashboard() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    // Debug log the selected day whenever it changes
+    console.log(`Selected day changed to: ${selectedDay}`);
+    if (labs.length > 0) {
+      // Filter labs by day when selectedDay changes but only if we have labs loaded
+      const todayLabs = labs.filter((lab) => lab.day_of_week === selectedDay);
+      console.log(`Found ${todayLabs.length} labs for ${selectedDay}`);
+    }
+  }, [selectedDay]);
+
   const loadData = async () => {
     await refreshUserProfile();
-    loadQRCode();
+    // Add debug call
+    const debugResult = await debugDatabaseContent();
+    console.log(debugResult);
+
     if (userProfile) {
       await fetchLabs();
-    }
-  };
-
-  const loadQRCode = async () => {
-    try {
-      setQrLoading(true);
-      const qrData = await getQRCode();
-      setQrCode(qrData);
-    } catch (error) {
-      console.error("Error loading QR code:", error);
-    } finally {
-      setQrLoading(false);
     }
   };
 
@@ -93,81 +93,102 @@ export default function Dashboard() {
       setIsLoadingLabs(true);
       if (!userProfile) return;
 
-      const { data: enrolledLabsData, error: enrolledLabsError } =
-        await supabase
-          .from("student_labs")
-          .select(
-            `
-          lab_id,
-          labs:lab_id (
-            id,
-            name,
-            section,
-            day_of_week,
-            start_time,
-            end_time,
-            subjects:subject_id (
-              name,
-              code
-            )
-          )
-        `
-          )
-          .eq("student_id", userProfile.id);
-
-      if (enrolledLabsError) throw enrolledLabsError;
-
-      // Process the labs and filter by student's course and section
+      // Get student course and section for filtering
       const studentCourse = userProfile.course || "";
       const studentSection = userProfile.section || "";
 
-      // NOTE: There are TypeScript errors in this section due to the complex nested structure
-      // of the data returned from Supabase. We're using 'as any' casts as a temporary solution.
-      // In a production environment, we would define proper interfaces for all the data structures.
-      const filteredLabs = enrolledLabsData
-        ?.filter((item) => {
-          const lab = item.labs as any; // Cast to any to avoid TypeScript errors
-          if (!lab) return false;
+      console.log("Student course:", studentCourse);
+      console.log("Student section:", studentSection);
 
-          // Check if course matches (if student has a course)
-          const labSubject = lab.subjects?.name || "";
-          const courseMatches =
-            !studentCourse || labSubject.includes(studentCourse);
+      // First get all labs with subject information using proper foreign key relationship
+      const { data: allLabsData, error: allLabsError } = await supabase.from(
+        "labs"
+      ).select(`
+          *,
+          subjects:subject_id (
+            id, name, code, description
+          )
+        `);
 
-          // Check if section matches (if student has a section)
-          const labSection = lab.section || "";
-          const sectionMatches =
-            !studentSection || labSection === studentSection;
+      if (allLabsError) {
+        console.error("Error fetching labs:", allLabsError);
+        throw allLabsError;
+      }
 
-          // Only include labs that match both course and section criteria
-          return courseMatches && sectionMatches;
-        })
-        .map((item) => {
-          const lab = item.labs as any; // Cast to any to avoid TypeScript errors
-          return {
-            id: lab.id,
-            name: lab.name,
-            section: lab.section,
-            day_of_week: lab.day_of_week, // Use day_of_week instead of day to match the Lab interface
-            start_time: lab.start_time,
-            end_time: lab.end_time,
-            subject_name: lab.subjects?.name || "Unknown",
-            subject_code: lab.subjects?.code || "",
-          };
+      console.log("All labs fetched:", allLabsData?.length || 0);
+      if (allLabsData && allLabsData.length > 0) {
+        console.log(
+          "Sample lab data:",
+          JSON.stringify(allLabsData[0], null, 2)
+        );
+      } else {
+        console.log("No labs found in database");
+      }
+
+      // Convert the labs to our format
+      const formattedLabs: Lab[] = [];
+
+      for (const lab of allLabsData || []) {
+        // Skip invalid labs or labs without subject
+        if (!lab || !lab.subjects) continue;
+
+        // Get the subject data
+        const subject = lab.subjects || {};
+
+        formattedLabs.push({
+          id: lab.id || "",
+          name: lab.name || "Unknown Lab",
+          section: lab.section || "",
+          day_of_week: lab.day_of_week || "Monday",
+          start_time: lab.start_time || "00:00:00",
+          end_time: lab.end_time || "00:00:00",
+          subject_name: subject.name || "Unknown Subject",
+          subject_code: subject.code || "",
         });
+      }
 
-      // Group by day
-      const labsByDay: Record<string, any[]> = {};
-      filteredLabs?.forEach((lab) => {
-        if (!labsByDay[lab.day_of_week]) {
-          labsByDay[lab.day_of_week] = [];
-        }
-        labsByDay[lab.day_of_week].push(lab);
-      });
+      console.log(`Formatted ${formattedLabs.length} labs`);
 
-      setLabs(filteredLabs);
+      // Filter labs based on course and section
+      let filteredLabs = formattedLabs;
+
+      // Filter by course if specified
+      if (studentCourse) {
+        // Check if subject name contains the student's course name
+        filteredLabs = filteredLabs.filter((lab) =>
+          lab.subject_name.includes(studentCourse)
+        );
+        console.log(`After course filter: ${filteredLabs.length} labs`);
+      }
+
+      // Filter by section if specified
+      if (studentSection) {
+        filteredLabs = filteredLabs.filter(
+          (lab) => lab.section === studentSection
+        );
+        console.log(`After section filter: ${filteredLabs.length} labs`);
+      }
+
+      // If no labs are found after filtering, show all labs
+      if (filteredLabs.length === 0 && formattedLabs.length > 0) {
+        console.log("No labs found after filtering, showing all labs instead");
+        filteredLabs = formattedLabs;
+      }
+
+      // Get today's labs
+      const todayLabs = filteredLabs.filter(
+        (lab) => lab.day_of_week === selectedDay
+      );
+
+      console.log(`Labs for ${selectedDay}: ${todayLabs.length}`);
+
+      // Sort labs by start time
+      todayLabs.sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+      setLabs(todayLabs);
     } catch (error) {
       console.error("Error fetching labs:", error);
+      setLabs([]);
     } finally {
       setIsLoadingLabs(false);
     }
@@ -181,13 +202,13 @@ export default function Dashboard() {
 
   function getCurrentDayOfWeek() {
     const days = [
+      "Sunday",
       "Monday",
       "Tuesday",
       "Wednesday",
       "Thursday",
       "Friday",
       "Saturday",
-      "Sunday",
     ];
     const today = new Date().getDay();
     return days[today];
@@ -238,6 +259,72 @@ export default function Dashboard() {
     setModalVisible(true);
   };
 
+  const onDaySelected = (day: string) => {
+    // Only fetch new data if the day changed
+    if (selectedDay !== day) {
+      setSelectedDay(day);
+      // We need to reload labs from the database to ensure we have all
+      // labs before filtering by day
+      fetchLabs();
+    }
+  };
+
+  // Add this function to verify database content directly
+  const debugDatabaseContent = async () => {
+    try {
+      console.log("Debugging database content...");
+
+      // Check subjects (courses)
+      const { data: subjects, error: subjectsError } = await supabase
+        .from("subjects")
+        .select("*");
+
+      if (subjectsError) {
+        console.error("Error fetching subjects:", subjectsError);
+      } else {
+        console.log(`Found ${subjects.length} subjects:`, subjects);
+      }
+
+      // Check all labs without filtering
+      const { data: allLabs, error: labsError } = await supabase
+        .from("labs")
+        .select("*, subjects:subject_id(*)");
+
+      if (labsError) {
+        console.error("Error fetching all labs:", labsError);
+      } else {
+        console.log(`Found ${allLabs.length} total labs in database:`, allLabs);
+      }
+
+      // Check student labs assignments
+      if (user) {
+        const { data: enrollments, error: enrollmentError } = await supabase
+          .from("student_labs")
+          .select("*")
+          .eq("student_id", user.id);
+
+        if (enrollmentError) {
+          console.error(
+            "Error fetching student lab enrollments:",
+            enrollmentError
+          );
+        } else {
+          console.log(
+            `Found ${enrollments?.length || 0} student lab enrollments:`,
+            enrollments
+          );
+        }
+      }
+
+      return `Found ${subjects?.length || 0} subjects, ${
+        allLabs?.length || 0
+      } labs, and checked student enrollments`;
+    } catch (error) {
+      console.error("Debug error:", error);
+      return "Error debugging database";
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -249,32 +336,28 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor={Colors.light.primary}
-      />
+      <StatusBar barStyle="dark-content" />
 
+      {/* Header */}
       <LinearGradient
-        colors={[Colors.light.primary, "#2a6fc5"]}
-        style={styles.header}
+        colors={[Colors.light.primary, Colors.light.primaryDark]}
+        style={styles.headerGradient}
       >
         <View style={styles.headerContent}>
           <View>
-            <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.username}>
-              {userProfile?.full_name || "Student"}
+            <Text style={styles.headerDate}>{getCurrentDate()}</Text>
+            <Text style={styles.headerTitle}>
+              Hello, {userProfile?.full_name?.split(" ")[0] || "Student"}
             </Text>
+            <View style={styles.courseInfoContainer}>
+              <Ionicons name="school-outline" size={16} color="#fff" />
+              <Text style={styles.courseText}>
+                {userProfile?.course || "No Course"} • Section{" "}
+                {userProfile?.section || "Unassigned"}
+              </Text>
+            </View>
           </View>
-
-          <TouchableOpacity
-            style={styles.profileButton}
-            onPress={() => router.push("/(tabs)" as any)}
-          >
-            <Ionicons name="person-circle" size={36} color="#fff" />
-          </TouchableOpacity>
         </View>
-
-        <Text style={styles.dateText}>{getCurrentDate()}</Text>
       </LinearGradient>
 
       <ScrollView
@@ -283,58 +366,19 @@ export default function Dashboard() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Quick Access Buttons */}
-        <View style={styles.quickAccessContainer}>
-          <TouchableOpacity
-            style={styles.quickAccessButton}
-            onPress={() => router.push("/(tabs)/qrcode" as any)}
-          >
-            <View style={styles.quickAccessIconContainer}>
-              <Ionicons name="qr-code" size={24} color={Colors.light.primary} />
-            </View>
-            <Text style={styles.quickAccessText}>My QR Code</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickAccessButton}
-            onPress={() => router.push("/(tabs)/attendance" as any)}
-          >
-            <View style={styles.quickAccessIconContainer}>
-              <Ionicons
-                name="calendar"
-                size={24}
-                color={Colors.light.primary}
-              />
-            </View>
-            <Text style={styles.quickAccessText}>Attendance</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickAccessButton}
-            onPress={() => router.push("/(tabs)/access" as any)}
-          >
-            <View style={styles.quickAccessIconContainer}>
-              <Ionicons name="key" size={24} color={Colors.light.primary} />
-            </View>
-            <Text style={styles.quickAccessText}>Access</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickAccessButton}>
-            <View style={styles.quickAccessIconContainer}>
-              <Ionicons
-                name="settings"
-                size={24}
-                color={Colors.light.primary}
-              />
-            </View>
-            <Text style={styles.quickAccessText}>Settings</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Lab Schedule */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Lab Schedule</Text>
+            <Text style={styles.sectionTitle}>My Lab Schedule</Text>
+            <View style={styles.courseFilterBadge}>
+              <Text style={styles.courseFilterText}>
+                {userProfile?.course
+                  ? userProfile.section
+                    ? `${userProfile.course}, Section ${userProfile.section}`
+                    : `${userProfile.course}, All Sections`
+                  : "All Courses"}
+              </Text>
+            </View>
           </View>
 
           <ScrollView
@@ -355,12 +399,9 @@ export default function Dashboard() {
               <TouchableOpacity
                 key={day}
                 style={getDayButtonStyle(day)}
-                onPress={() => {
-                  setSelectedDay(day);
-                  fetchLabs();
-                }}
+                onPress={() => onDaySelected(day)}
               >
-                <Text style={getDayTextStyle(day)}>{day}</Text>
+                <Text style={getDayTextStyle(day)}>{day.substring(0, 3)}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -374,23 +415,58 @@ export default function Dashboard() {
             labs.map((lab) => (
               <View key={lab.id} style={styles.labCard}>
                 <View style={styles.labTimeContainer}>
-                  <Text style={styles.labTime}>{lab.start_time}</Text>
+                  <Text style={styles.labTime}>
+                    {formatTime(lab.start_time)}
+                  </Text>
                   <View style={styles.timeLine} />
-                  <Text style={styles.labEndTime}>{lab.end_time}</Text>
+                  <Text style={styles.labEndTime}>
+                    {formatTime(lab.end_time)}
+                  </Text>
                 </View>
 
                 <View style={styles.labDetails}>
-                  <Text style={styles.labSubjectCode}>{lab.subject_code}</Text>
-                  <Text style={styles.labTitle}>{lab.subject_name}</Text>
-                  <View style={styles.labLocationContainer}>
-                    <Ionicons
-                      name="location-outline"
-                      size={16}
-                      color={Colors.light.textSecondary}
-                    />
-                    <Text style={styles.labLocation}>
-                      {lab.section ? `Section ${lab.section}` : "No Section"}
+                  <View style={styles.labHeaderRow}>
+                    <Text style={styles.labSubjectCode}>
+                      {lab.subject_code}
                     </Text>
+                    {lab.section && (
+                      <View style={styles.sectionBadge}>
+                        <Text style={styles.sectionBadgeText}>
+                          Section {lab.section}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <Text style={styles.labTitle}>{lab.name}</Text>
+
+                  <Text style={styles.subjectName} numberOfLines={2}>
+                    {lab.subject_name}
+                  </Text>
+
+                  <View style={styles.labInfoRow}>
+                    <View style={styles.labDetail}>
+                      <Ionicons
+                        name="time-outline"
+                        size={16}
+                        color={Colors.light.textSecondary}
+                      />
+                      <Text style={styles.labDetailText}>
+                        {formatTime(lab.start_time)} -{" "}
+                        {formatTime(lab.end_time)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.labDetail}>
+                      <Ionicons
+                        name="people-outline"
+                        size={16}
+                        color={Colors.light.textSecondary}
+                      />
+                      <Text style={styles.labDetailText}>
+                        {lab.section ? `Section ${lab.section}` : "No Section"}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -406,8 +482,8 @@ export default function Dashboard() {
                 No labs scheduled for {selectedDay}
               </Text>
               <Text style={styles.emptyStateSubtext}>
-                Your lab schedule will appear here once it's added by an
-                administrator
+                Labs matching your course ({userProfile?.course || "None"}) and
+                section ({userProfile?.section || "None"}) will appear here
               </Text>
             </View>
           )}
@@ -417,8 +493,10 @@ export default function Dashboard() {
           style={styles.emergencyButton}
           onPress={handleEmergencyAccess}
         >
-          <Ionicons name="warning" size={20} color={Colors.light.background} />
-          <Text style={styles.emergencyButtonText}>Emergency Access</Text>
+          <Ionicons name="alert-circle-outline" size={20} color="#fff" />
+          <Text style={styles.emergencyButtonText}>
+            Request Emergency Lab Access
+          </Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -436,209 +514,223 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: Colors.light.backgroundAlt,
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 30,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+  scrollContent: {
+    paddingBottom: 20,
+  },
+  headerGradient: {
+    paddingTop: StatusBar.currentHeight || 0,
+    height: 140,
   },
   headerContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flex: 1,
+    padding: 20,
+    paddingTop: 16,
+    justifyContent: "flex-end",
   },
-  greeting: {
-    fontSize: 16,
-    color: "rgba(255, 255, 255, 0.8)",
-  },
-  username: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#fff",
-  },
-  dateText: {
-    marginTop: 8,
+  headerDate: {
     color: "rgba(255, 255, 255, 0.8)",
     fontSize: 14,
+    marginBottom: 4,
   },
-  profileButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  headerTitle: {
+    color: "#fff",
+    fontSize: 28,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  courseInfoContainer: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+  },
+  courseText: {
+    color: "#fff",
+    fontSize: 14,
+    marginLeft: 6,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f8f9fa",
+    padding: 40,
   },
   loadingText: {
-    marginTop: 12,
+    marginTop: 16,
     fontSize: 16,
-    color: "#666",
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 30,
-  },
-  quickAccessContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 24,
-  },
-  quickAccessButton: {
-    width: (width - 50) / 4,
-    alignItems: "center",
-  },
-  quickAccessIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "rgba(33, 150, 243, 0.1)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  quickAccessText: {
-    fontSize: 12,
-    color: "#333",
-    textAlign: "center",
+    color: Colors.light.text,
   },
   sectionContainer: {
-    marginBottom: 24,
+    marginTop: -30,
+    backgroundColor: Colors.light.background,
+    borderRadius: 16,
+    marginHorizontal: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    marginBottom: 16,
   },
   sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "600",
-    color: "#333",
+    fontWeight: "bold",
+    color: Colors.light.text,
+    marginBottom: 8,
+  },
+  courseFilterBadge: {
+    backgroundColor: `${Colors.light.primary}15`,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  courseFilterText: {
+    color: Colors.light.primary,
+    fontSize: 12,
+    fontWeight: "500",
   },
   daySelector: {
     marginBottom: 16,
   },
   daySelectorContent: {
-    paddingRight: 20,
-    paddingLeft: 4,
+    paddingVertical: 8,
   },
   dayButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    marginRight: 10,
     borderRadius: 20,
-    backgroundColor: "#f0f0f0",
+    marginRight: 8,
+    backgroundColor: Colors.light.backgroundAlt,
   },
   selectedDayButton: {
     backgroundColor: Colors.light.primary,
   },
   dayButtonText: {
     fontSize: 14,
-    color: "#666",
+    color: Colors.light.text,
+    fontWeight: "500",
   },
   selectedDayButtonText: {
     color: "#fff",
-    fontWeight: "600",
   },
   labCard: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    backgroundColor: Colors.light.backgroundAlt,
+    borderRadius: 12,
     padding: 16,
     marginBottom: 16,
+    flexDirection: "row",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowRadius: 2,
+    elevation: 1,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.light.primary,
   },
   labTimeContainer: {
     alignItems: "center",
-    width: 80,
+    marginRight: 16,
   },
   labTime: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
     color: Colors.light.primary,
   },
   timeLine: {
     width: 2,
-    backgroundColor: "#eee",
-    height: 30,
-    marginVertical: 8,
+    height: 24,
+    backgroundColor: `${Colors.light.primary}50`,
+    marginVertical: 4,
   },
   labEndTime: {
-    fontSize: 16,
+    fontSize: 14,
     color: Colors.light.textSecondary,
   },
   labDetails: {
     flex: 1,
-    marginLeft: 16,
   },
-  labSubjectCode: {
-    fontSize: 13,
-    color: Colors.light.textSecondary,
-    marginBottom: 4,
-  },
-  labTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: Colors.light.text,
-    marginBottom: 8,
-  },
-  labLocationContainer: {
+  labHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 4,
   },
-  labLocation: {
+  labSubjectCode: {
+    fontSize: 12,
+    color: Colors.light.primary,
+    fontWeight: "600",
+  },
+  sectionBadge: {
+    backgroundColor: `${Colors.light.primary}20`,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  sectionBadgeText: {
+    color: Colors.light.primary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  labTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: Colors.light.text,
+    marginBottom: 4,
+  },
+  subjectName: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    marginBottom: 6,
+  },
+  labInfoRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  labDetail: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 16,
+    marginBottom: 4,
+  },
+  labDetailText: {
     fontSize: 14,
     color: Colors.light.textSecondary,
     marginLeft: 4,
   },
   emptyState: {
     alignItems: "center",
-    justifyContent: "center",
-    padding: 32,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    marginTop: 24,
+    paddingVertical: 32,
   },
   emptyStateText: {
     fontSize: 18,
     fontWeight: "600",
     color: Colors.light.text,
     marginTop: 16,
-    marginBottom: 8,
-    textAlign: "center",
   },
   emptyStateSubtext: {
     fontSize: 14,
     color: Colors.light.textSecondary,
     textAlign: "center",
-    maxWidth: "80%",
+    marginTop: 8,
+    marginHorizontal: 32,
   },
   emergencyButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: Colors.light.primary,
+    justifyContent: "center",
+    backgroundColor: Colors.light.error,
     padding: 12,
-    borderRadius: 8,
-    alignSelf: "flex-start",
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
   emergencyButtonText: {
     color: Colors.light.background,

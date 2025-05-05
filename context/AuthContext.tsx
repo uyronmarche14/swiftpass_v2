@@ -182,9 +182,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .from("student_labs")
           .select(
             `
-            labs (
+            lab_id,
+            labs!student_labs_lab_id_fkey (
               id, name, section, day_of_week, start_time, end_time,
-              subjects (name, code)
+              subjects:subject_id (
+                id, name, code
+              )
             )
           `
           )
@@ -194,19 +197,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Process lab schedules by day
           const labSchedule: Record<string, any[]> = {};
 
-          // NOTE: There are TypeScript errors in this section that need to be fixed
-          // The labs structure coming from Supabase query needs proper type handling
-          enrollments.forEach((enrollment) => {
-            // The labs property is a single object, not an array
-            const lab = enrollment.labs as any;
+          // Process each enrollment
+          enrollments.forEach((enrollment: any) => {
+            // Get the lab from the enrollment
+            const lab = enrollment.labs;
 
             // Skip null/undefined labs
             if (!lab) return;
 
+            // Get subject information from the joined data
+            const subject = lab.subjects;
+            if (!subject) return;
+
             // Check if student's course and section match the lab's subject and section
             const studentCourse = response.data?.course || "";
             const studentSection = response.data?.section || "";
-            const labSubject = lab.subjects?.name || "";
+            const labSubject = subject.name || "";
             const labSection = lab.section || "";
 
             // Skip labs that don't match the student's course (if the student has a course)
@@ -232,8 +238,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               section: lab.section,
               start_time: lab.start_time,
               end_time: lab.end_time,
-              subject: lab.subjects?.name || "",
-              subject_code: lab.subjects?.code || "",
+              subject: subject.name || "",
+              subject_code: subject.code || "",
             });
           });
 
@@ -426,13 +432,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     section?: string
   ) => {
     try {
-      // Create QR code data
+      // Get current date and time
+      const now = new Date();
+      const currentTime = now.toTimeString().split(" ")[0]; // HH:MM:SS format
+      const currentDate = now.toISOString().split("T")[0]; // YYYY-MM-DD format
+      const dayOfWeek = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+      ][now.getDay()];
+
+      // Get current lab information based on student course, section, and current time
+      let currentLab = null;
+      if (course && section) {
+        // Find labs that match this student's course and section for today
+        const { data: subjectData } = await supabase
+          .from("subjects")
+          .select("id")
+          .ilike("name", `%${course}%`)
+          .single();
+
+        if (subjectData) {
+          const { data: labData } = await supabase
+            .from("labs")
+            .select("*")
+            .eq("subject_id", subjectData.id)
+            .eq("section", section)
+            .eq("day_of_week", dayOfWeek);
+
+          if (labData && labData.length > 0) {
+            // Find if there's a lab right now
+            const currentLabs = labData.filter((lab) => {
+              const labStartTime = lab.start_time;
+              const labEndTime = lab.end_time;
+              return currentTime >= labStartTime && currentTime <= labEndTime;
+            });
+
+            if (currentLabs.length > 0) {
+              currentLab = currentLabs[0];
+            }
+          }
+        }
+      }
+
+      // Create QR code data with enhanced information
       const qrData = {
         userId: userId,
         studentId: studentId,
         name: fullName,
         course: course || "Not Specified",
         section: section || "Not Specified",
+        timestamp: now.toISOString(),
+        currentDay: dayOfWeek,
+        currentTime: currentTime,
+        currentLab: currentLab
+          ? {
+              name: currentLab.name,
+              time: `${currentLab.start_time} - ${currentLab.end_time}`,
+              day: currentLab.day_of_week,
+            }
+          : null,
       };
 
       // Insert the QR code data into the qr_codes table
@@ -461,6 +524,147 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUserProfile = async () => {
     if (user) {
       await fetchUserProfile(user.id);
+      // After fetching profile, auto-assign to labs if needed
+      if (userProfile && !isAdmin) {
+        await autoAssignToLabs(
+          user.id,
+          userProfile.course,
+          userProfile.section
+        );
+      }
+    }
+  };
+
+  // Automatically assign student to labs matching their course and section
+  const autoAssignToLabs = async (
+    studentId: string,
+    course?: string,
+    section?: string
+  ) => {
+    try {
+      if (!course || !section) {
+        console.log("Skipping auto lab assignment - missing course or section");
+        return false;
+      }
+
+      console.log(`Auto-assigning labs for student: ${studentId}`);
+      console.log(`Course: ${course}, Section: ${section}`);
+
+      // First check if student already has lab assignments
+      const { data: existingAssignments, error: assignmentsError } =
+        await supabase
+          .from("student_labs")
+          .select("*")
+          .eq("student_id", studentId);
+
+      if (assignmentsError) {
+        console.error(
+          "Error checking existing lab assignments:",
+          assignmentsError
+        );
+        return false;
+      }
+
+      // If student already has assignments, don't add more
+      if (existingAssignments && existingAssignments.length > 0) {
+        console.log(
+          `Student already has ${existingAssignments.length} lab assignments. Skipping auto-assignment.`
+        );
+        return true;
+      }
+
+      // Find subject ID for the student's course
+      const { data: subjectData, error: subjectError } = await supabase
+        .from("subjects")
+        .select("id")
+        .ilike("name", `%${course}%`);
+
+      if (subjectError || !subjectData || subjectData.length === 0) {
+        console.error(
+          "Error finding subject for course:",
+          subjectError || "No subjects found"
+        );
+        return false;
+      }
+
+      const subjectIds = subjectData.map((subject) => subject.id);
+      console.log(`Found ${subjectIds.length} matching subjects`);
+
+      // Find all labs matching the subject and section
+      const { data: matchingLabs, error: labsError } = await supabase
+        .from("labs")
+        .select("id")
+        .in("subject_id", subjectIds)
+        .eq("section", section);
+
+      if (labsError) {
+        console.error("Error finding matching labs:", labsError);
+        return false;
+      }
+
+      console.log(`Found ${matchingLabs?.length || 0} matching labs`);
+
+      // If no matching labs, try finding labs without section filter
+      if (!matchingLabs || matchingLabs.length === 0) {
+        const { data: subjectLabs, error: subjectLabsError } = await supabase
+          .from("labs")
+          .select("id")
+          .in("subject_id", subjectIds);
+
+        if (subjectLabsError) {
+          console.error("Error finding subject labs:", subjectLabsError);
+          return false;
+        }
+
+        if (subjectLabs && subjectLabs.length > 0) {
+          console.log(
+            `Found ${subjectLabs.length} labs matching subject without section filter`
+          );
+
+          // Assign student to all labs for their course, regardless of section
+          const assignments = subjectLabs.map((lab) => ({
+            student_id: studentId,
+            lab_id: lab.id,
+            created_at: new Date().toISOString(),
+          }));
+
+          const { error: insertError } = await supabase
+            .from("student_labs")
+            .insert(assignments);
+
+          if (insertError) {
+            console.error("Error assigning labs:", insertError);
+            return false;
+          }
+
+          console.log(`Auto-assigned student to ${assignments.length} labs`);
+          return true;
+        }
+      } else {
+        // Assign student to matching labs
+        const assignments = matchingLabs.map((lab) => ({
+          student_id: studentId,
+          lab_id: lab.id,
+          created_at: new Date().toISOString(),
+        }));
+
+        const { error: insertError } = await supabase
+          .from("student_labs")
+          .insert(assignments);
+
+        if (insertError) {
+          console.error("Error assigning labs:", insertError);
+          return false;
+        }
+
+        console.log(`Auto-assigned student to ${assignments.length} labs`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("Error in auto lab assignment:", error);
+      return false;
     }
   };
 
@@ -469,6 +673,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!user) {
         console.error("Error: You need to be logged in to get a QR code");
         return null;
+      }
+
+      // Get current time information
+      const now = new Date();
+      const currentTime = now.toTimeString().split(" ")[0]; // HH:MM:SS format
+      const dayOfWeek = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+      ][now.getDay()];
+
+      // Get current lab information
+      let currentLab = null;
+      if (userProfile?.course && userProfile?.section) {
+        // Find labs that match this student's course and section for today
+        const { data: subjectData } = await supabase
+          .from("subjects")
+          .select("id")
+          .ilike("name", `%${userProfile.course}%`)
+          .single();
+
+        if (subjectData) {
+          const { data: labData } = await supabase
+            .from("labs")
+            .select("*")
+            .eq("subject_id", subjectData.id)
+            .eq("section", userProfile.section)
+            .eq("day_of_week", dayOfWeek);
+
+          if (labData && labData.length > 0) {
+            // Find if there's a lab right now
+            const currentLabs = labData.filter((lab) => {
+              const labStartTime = lab.start_time;
+              const labEndTime = lab.end_time;
+              return currentTime >= labStartTime && currentTime <= labEndTime;
+            });
+
+            if (currentLabs.length > 0) {
+              currentLab = currentLabs[0];
+            }
+          }
+        }
       }
 
       // First check if user has a QR code in the database
@@ -502,7 +752,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               throw new Error("Failed to retrieve newly created QR code");
             }
 
-            return JSON.stringify(newQrData.qr_data);
+            // Update with current time and lab info
+            const updatedQrData = {
+              ...newQrData.qr_data,
+              timestamp: now.toISOString(),
+              currentDay: dayOfWeek,
+              currentTime: currentTime,
+              currentLab: currentLab
+                ? {
+                    name: currentLab.name,
+                    time: `${currentLab.start_time} - ${currentLab.end_time}`,
+                    day: currentLab.day_of_week,
+                  }
+                : null,
+            };
+
+            // Update the QR code with the current time information
+            await supabase
+              .from("qr_codes")
+              .update({
+                qr_data: updatedQrData,
+                updated_at: now.toISOString(),
+              })
+              .eq("student_id", user.id);
+
+            return JSON.stringify(updatedQrData);
           } else {
             throw new Error("Failed to create QR code");
           }
@@ -511,20 +785,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Return the user's permanent QR code data
-      return JSON.stringify(qrCodeData.qr_data);
+      // Update the existing QR code with current time and lab info
+      const existingData = qrCodeData.qr_data;
+      const updatedQrData = {
+        ...existingData,
+        timestamp: now.toISOString(),
+        currentDay: dayOfWeek,
+        currentTime: currentTime,
+        currentLab: currentLab
+          ? {
+              name: currentLab.name,
+              time: `${currentLab.start_time} - ${currentLab.end_time}`,
+              day: currentLab.day_of_week,
+            }
+          : null,
+      };
+
+      // Update the QR code with the current time information
+      await supabase
+        .from("qr_codes")
+        .update({
+          qr_data: updatedQrData,
+          updated_at: now.toISOString(),
+        })
+        .eq("student_id", user.id);
+
+      // Return the user's updated QR code data
+      return JSON.stringify(updatedQrData);
     } catch (error: unknown) {
       console.error("QR code error:", error);
 
       // Only log to console, don't show alert to user
       // Generate fallback QR code for the user if possible
       if (userProfile) {
+        // Get current time information for fallback
+        const now = new Date();
+        const currentTime = now.toTimeString().split(" ")[0];
+        const dayOfWeek = [
+          "Sunday",
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+        ][now.getDay()];
+
         const fallbackQrData = {
           userId: user?.id,
           studentId: userProfile.student_id,
           name: userProfile.full_name,
           course: userProfile.course || "Not Specified",
           section: userProfile.section || "Not Specified",
+          timestamp: now.toISOString(),
+          currentDay: dayOfWeek,
+          currentTime: currentTime,
           generated: "fallback",
         };
         return JSON.stringify(fallbackQrData);

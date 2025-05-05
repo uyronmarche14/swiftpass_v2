@@ -19,6 +19,7 @@ import * as Haptics from "expo-haptics";
 export default function QRCodeScreen() {
   const { userProfile, isLoading, getQRCode } = useAuth();
   const [qrValue, setQrValue] = useState("");
+  const [qrData, setQrData] = useState<any>(null);
   const [qrLoading, setQrLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -28,9 +29,16 @@ export default function QRCodeScreen() {
 
     try {
       setQrLoading(true);
-      const qrData = await getQRCode();
-      if (qrData) {
-        setQrValue(qrData);
+      const qrDataString = await getQRCode();
+      if (qrDataString) {
+        setQrValue(qrDataString);
+        try {
+          // Parse the QR data to display additional info
+          const parsedData = JSON.parse(qrDataString);
+          setQrData(parsedData);
+        } catch (parseError) {
+          console.error("Error parsing QR data:", parseError);
+        }
       } else {
         // Fallback to generating QR code if backend fails
         const fallbackQrData = {
@@ -38,8 +46,12 @@ export default function QRCodeScreen() {
           studentId: userProfile.student_id,
           name: userProfile.full_name,
           course: userProfile.course || "Not Specified",
+          section: userProfile.section || "Not Specified",
+          timestamp: new Date().toISOString(),
+          generated: "fallback",
         };
         setQrValue(JSON.stringify(fallbackQrData));
+        setQrData(fallbackQrData);
       }
     } catch (error) {
       console.error("Error loading QR code:", error);
@@ -49,8 +61,12 @@ export default function QRCodeScreen() {
         studentId: userProfile.student_id,
         name: userProfile.full_name,
         course: userProfile.course || "Not Specified",
+        section: userProfile.section || "Not Specified",
+        timestamp: new Date().toISOString(),
+        generated: "fallback",
       };
       setQrValue(JSON.stringify(fallbackQrData));
+      setQrData(fallbackQrData);
     } finally {
       setQrLoading(false);
     }
@@ -95,6 +111,13 @@ export default function QRCodeScreen() {
     );
   };
 
+  // Format timestamp to readable format
+  const formatDate = (timestamp: string) => {
+    if (!timestamp) return "Unknown";
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  };
+
   if (isLoading || (qrLoading && !refreshing)) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -103,6 +126,9 @@ export default function QRCodeScreen() {
       </SafeAreaView>
     );
   }
+
+  const hasCurrentLab =
+    qrData?.currentLab !== null && qrData?.currentLab !== undefined;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -127,7 +153,7 @@ export default function QRCodeScreen() {
               color={Colors.light.info}
             />
             <Text style={styles.infoText}>
-              This QR code is permanently linked to your account
+              This QR code updates automatically with your current lab
             </Text>
           </View>
 
@@ -160,7 +186,82 @@ export default function QRCodeScreen() {
                 {userProfile?.course || "Not specified"}
               </Text>
             </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Section:</Text>
+              <Text style={styles.infoValue}>
+                {userProfile?.section || "Not specified"}
+              </Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Time:</Text>
+              <Text style={styles.infoValue}>
+                {qrData?.timestamp
+                  ? formatDate(qrData.timestamp)
+                  : "Not available"}
+              </Text>
+            </View>
           </View>
+        </View>
+
+        {/* Current Lab Schedule Section */}
+        <View style={styles.labScheduleSection}>
+          <Text style={styles.sectionTitle}>
+            <Ionicons
+              name="time-outline"
+              size={20}
+              color={Colors.light.primary}
+            />{" "}
+            Current Lab
+          </Text>
+
+          {hasCurrentLab ? (
+            <View style={styles.currentLabCard}>
+              <View style={styles.labHeader}>
+                <Text style={styles.labName}>{qrData.currentLab.name}</Text>
+                <View style={styles.statusBadge}>
+                  <Text style={styles.statusText}>Active Now</Text>
+                </View>
+              </View>
+
+              <View style={styles.labDetails}>
+                <View style={styles.labDetailRow}>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={18}
+                    color={Colors.light.icon}
+                  />
+                  <Text style={styles.labDetailText}>
+                    {qrData.currentLab.day}
+                  </Text>
+                </View>
+                <View style={styles.labDetailRow}>
+                  <Ionicons
+                    name="time-outline"
+                    size={18}
+                    color={Colors.light.icon}
+                  />
+                  <Text style={styles.labDetailText}>
+                    {qrData.currentLab.time}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.noLabContainer}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={40}
+                color={Colors.light.icon}
+              />
+              <Text style={styles.noLabText}>
+                No lab session currently active
+              </Text>
+              <Text style={styles.noLabSubtext}>
+                Your QR code will automatically update when you have a scheduled
+                lab
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.emergencyContainer}>
@@ -261,6 +362,89 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.light.text,
   },
+  labScheduleSection: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: Colors.light.text,
+    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  currentLabCard: {
+    borderWidth: 1,
+    borderColor: "#eee",
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: "#fafafa",
+  },
+  labHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  labName: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: Colors.light.text,
+  },
+  statusBadge: {
+    backgroundColor: Colors.light.success + "20",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.light.success,
+  },
+  statusText: {
+    color: Colors.light.success,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  labDetails: {
+    marginTop: 8,
+  },
+  labDetailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  labDetailText: {
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+    marginLeft: 8,
+  },
+  noLabContainer: {
+    alignItems: "center",
+    padding: 24,
+    backgroundColor: "#f5f5f5",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
+  noLabText: {
+    fontSize: 18,
+    fontWeight: "500",
+    color: Colors.light.textSecondary,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  noLabSubtext: {
+    fontSize: 14,
+    color: Colors.light.icon,
+    textAlign: "center",
+  },
   emergencyContainer: {
     marginBottom: 20,
   },
@@ -277,12 +461,12 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
     fontSize: 16,
+    marginLeft: 8,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: Colors.light.background,
   },
   loadingText: {
     marginTop: 16,

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,13 +14,33 @@ import { Colors } from "../../constants/Colors";
 import { CustomModal } from "../../components/ui/Modal";
 
 export default function Profile() {
-  const { user, logout, isLoading } = useAuth();
+  const { user, logout, isLoading, userProfile } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfig, setModalConfig] = useState({
     title: "",
     message: "",
     type: "info" as "error" | "success" | "warning" | "info",
   });
+
+  useEffect(() => {
+    // Debug log the lab schedule info
+    console.log(
+      "Profile - userProfile lab_schedule:",
+      userProfile?.lab_schedule
+    );
+
+    if (userProfile?.lab_schedule) {
+      const scheduleKeys = Object.keys(userProfile.lab_schedule);
+      console.log("Lab schedule days:", scheduleKeys);
+
+      scheduleKeys.forEach((day) => {
+        const labs = userProfile.lab_schedule?.[day];
+        console.log(`Labs for ${day}:`, labs);
+      });
+    } else {
+      console.log("No lab schedule available in userProfile");
+    }
+  }, [userProfile]);
 
   const handleLogout = async () => {
     try {
@@ -77,12 +97,13 @@ export default function Profile() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Lab Schedule</Text>
         <View style={styles.card}>
-          {user?.lab_schedule ? (
-            Object.entries(user.lab_schedule).map(([day, schedules]) => (
+          {userProfile?.lab_schedule &&
+          Object.keys(userProfile.lab_schedule).length > 0 ? (
+            Object.entries(userProfile.lab_schedule).map(([day, schedules]) => (
               <View key={day} style={styles.scheduleRow}>
                 <Text style={styles.dayText}>{day}</Text>
                 <View style={styles.scheduleDetailsContainer}>
-                  {Array.isArray(schedules) ? (
+                  {Array.isArray(schedules) && schedules.length > 0 ? (
                     schedules.map((schedule, index) => (
                       <View key={index} style={styles.scheduleDetails}>
                         <Text style={styles.scheduleText}>
@@ -95,7 +116,7 @@ export default function Profile() {
                       </View>
                     ))
                   ) : (
-                    <Text style={styles.scheduleText}>{String(schedules)}</Text>
+                    <Text style={styles.scheduleText}>No labs on this day</Text>
                   )}
                 </View>
               </View>
