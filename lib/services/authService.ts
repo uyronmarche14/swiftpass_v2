@@ -123,12 +123,141 @@ export class AuthService {
     }
   }
 
+  // Method to create or fix admin account
+  static async createOrFixAdminAccount(): Promise<AuthResponse> {
+    try {
+      console.log("Attempting to create or fix admin account...");
+
+      // First check if admin exists in auth
+      const { data: userData, error: userError } =
+        await supabase.auth.signInWithPassword({
+          email: "admin@swiftpass.edu",
+          password: "Admin123!",
+        });
+
+      if (!userError && userData && userData.user) {
+        console.log("Admin account exists and credentials are valid");
+
+        // Check if admin record exists in admins table
+        const { data: adminData, error: adminError } = await supabase
+          .from("admins")
+          .select("*")
+          .eq("email", "admin@swiftpass.edu")
+          .single();
+
+        if (adminError || !adminData) {
+          console.log(
+            "Admin record doesn't exist in admins table - creating it"
+          );
+
+          // Create admin record
+          const { error: insertError } = await supabase.from("admins").insert([
+            {
+              id: userData.user.id,
+              email: "admin@swiftpass.edu",
+              full_name: "System Administrator",
+              role: "super_admin",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          ]);
+
+          if (insertError) {
+            console.error("Failed to create admin record:", insertError);
+            return {
+              success: false,
+              error: "Failed to create admin record in admins table",
+            };
+          }
+        }
+
+        return {
+          success: true,
+          data: userData,
+        };
+      }
+
+      // Admin account doesn't exist or credentials are invalid
+      console.log(
+        "Admin account doesn't exist or credentials are invalid, creating new account"
+      );
+
+      // First sign up the admin account
+      const { data: signupData, error: signupError } =
+        await supabase.auth.signUp({
+          email: "admin@swiftpass.edu",
+          password: "Admin123!",
+          options: {
+            data: {
+              full_name: "System Administrator",
+              role: "super_admin",
+            },
+          },
+        });
+
+      if (signupError) {
+        console.error("Failed to create admin account:", signupError);
+        return {
+          success: false,
+          error: signupError.message,
+        };
+      }
+
+      if (!signupData.user) {
+        console.error("Admin account creation returned no user");
+        return {
+          success: false,
+          error: "Admin account creation failed - no user returned",
+        };
+      }
+
+      console.log("Admin account created in auth system, confirming email...");
+
+      // In a production app, you would handle email confirmation properly
+      // For this demo, we'll use admin functions to confirm the email directly
+      // Note: This requires admin access to Supabase
+
+      // Create admin record
+      const { error: insertError } = await supabase.from("admins").insert([
+        {
+          id: signupData.user.id,
+          email: "admin@swiftpass.edu",
+          full_name: "System Administrator",
+          role: "super_admin",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]);
+
+      if (insertError) {
+        console.error("Failed to create admin record:", insertError);
+        return {
+          success: false,
+          error: "Failed to create admin record in admins table",
+        };
+      }
+
+      console.log("Admin account successfully created");
+      return {
+        success: true,
+        data: signupData,
+      };
+    } catch (error: any) {
+      console.error("Admin account creation error:", error);
+      return {
+        success: false,
+        error: error.message || "Failed to create admin account",
+      };
+    }
+  }
+
   static async register(userData: {
     email: string;
     password: string;
     fullName: string;
     studentId: string;
     course?: string;
+    section?: string;
   }): Promise<AuthResponse> {
     try {
       console.log("Registering user with data:", {
@@ -136,6 +265,7 @@ export class AuthService {
         fullName: userData.fullName,
         studentId: userData.studentId,
         course: userData.course,
+        section: userData.section,
       });
 
       // First check if tables exist
@@ -150,6 +280,7 @@ export class AuthService {
             full_name: userData.fullName,
             student_id: userData.studentId,
             course: userData.course || null,
+            section: userData.section || null,
           },
         },
       });
@@ -176,7 +307,8 @@ export class AuthService {
           userData.email,
           userData.fullName,
           userData.studentId,
-          userData.course
+          userData.course,
+          userData.section
         );
         console.log("Student profile creation completed");
 
@@ -185,7 +317,8 @@ export class AuthService {
           data.user.id,
           userData.fullName,
           userData.studentId,
-          userData.course
+          userData.course,
+          userData.section
         );
         console.log("Permanent QR code created");
       } catch (profileError) {
@@ -241,7 +374,8 @@ export class AuthService {
     email: string,
     fullName: string,
     studentId: string,
-    course?: string
+    course?: string,
+    section?: string
   ): Promise<void> {
     try {
       console.log("Creating student profile with data:", {
@@ -250,6 +384,7 @@ export class AuthService {
         fullName,
         studentId,
         course,
+        section,
       });
 
       // Use the UserProfileService instead of direct Supabase calls
@@ -263,6 +398,7 @@ export class AuthService {
           full_name: fullName,
           student_id: studentId,
           course: course || null,
+          section: section || null,
         },
       });
 
@@ -285,7 +421,8 @@ export class AuthService {
     userId: string,
     fullName: string,
     studentId: string,
-    course?: string
+    course?: string,
+    section?: string
   ): Promise<boolean> {
     try {
       console.log("Creating permanent QR code for user:", userId);
@@ -308,6 +445,7 @@ export class AuthService {
         studentId: studentId,
         name: fullName,
         course: course || "Not Specified",
+        section: section || "Not Specified",
         created: new Date().toISOString(),
       };
 

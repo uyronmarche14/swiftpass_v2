@@ -78,10 +78,26 @@ export default function Profile() {
         <Text style={styles.sectionTitle}>Lab Schedule</Text>
         <View style={styles.card}>
           {user?.lab_schedule ? (
-            Object.entries(user.lab_schedule).map(([day, schedule]) => (
+            Object.entries(user.lab_schedule).map(([day, schedules]) => (
               <View key={day} style={styles.scheduleRow}>
                 <Text style={styles.dayText}>{day}</Text>
-                <Text style={styles.scheduleText}>{String(schedule)}</Text>
+                <View style={styles.scheduleDetailsContainer}>
+                  {Array.isArray(schedules) ? (
+                    schedules.map((schedule, index) => (
+                      <View key={index} style={styles.scheduleDetails}>
+                        <Text style={styles.scheduleText}>
+                          {schedule.name}{" "}
+                          {schedule.section && `(Section ${schedule.section})`}
+                        </Text>
+                        <Text style={styles.scheduleTimeText}>
+                          {schedule.start_time} - {schedule.end_time}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.scheduleText}>{String(schedules)}</Text>
+                  )}
+                </View>
               </View>
             ))
           ) : (
@@ -191,20 +207,30 @@ const styles = StyleSheet.create({
   },
   scheduleRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.borderLight,
   },
   dayText: {
+    width: 80,
     fontSize: 16,
     fontWeight: "500",
     color: Colors.light.text,
   },
+  scheduleDetailsContainer: {
+    flex: 1,
+  },
+  scheduleDetails: {
+    marginBottom: 4,
+  },
   scheduleText: {
     fontSize: 16,
+    color: Colors.light.text,
+  },
+  scheduleTimeText: {
+    fontSize: 14,
     color: Colors.light.textSecondary,
+    marginTop: 2,
   },
   noScheduleText: {
     fontSize: 16,

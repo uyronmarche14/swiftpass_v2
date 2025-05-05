@@ -14,6 +14,7 @@ import { Colors } from "../constants/Colors";
 import { CustomInput } from "../components/ui/CustomInput";
 import { useAuth } from "../context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
+import DropDownPicker from "react-native-dropdown-picker";
 
 interface FormData {
   fullName: string;
@@ -22,6 +23,7 @@ interface FormData {
   password: string;
   confirmPassword: string;
   course: string;
+  section: string;
 }
 
 interface FormErrors {
@@ -31,7 +33,24 @@ interface FormErrors {
   password?: string;
   confirmPassword?: string;
   course?: string;
+  section?: string;
 }
+
+// Hardcoded course options with full names
+const courseOptions = [
+  {
+    label: "Bachelor of Science in Information Technology (BSIT)",
+    value: "BSIT",
+  },
+  { label: "Bachelor of Science in Computer Science (BSCS)", value: "BSCS" },
+];
+
+// Hardcoded section options
+const sectionOptions = [
+  { label: "Section A2021", value: "A2021" },
+  { label: "Section B2021", value: "B2021" },
+  { label: "Section C2021", value: "C2021" },
+];
 
 export default function Register() {
   const { register, isLoading } = useAuth();
@@ -44,8 +63,13 @@ export default function Register() {
     password: "",
     confirmPassword: "",
     course: "",
+    section: "",
   });
   const [errors, setErrors] = useState<FormErrors>({});
+
+  // State for dropdowns
+  const [openCourseDropdown, setOpenCourseDropdown] = useState(false);
+  const [openSectionDropdown, setOpenSectionDropdown] = useState(false);
 
   const validateForm = (): FormErrors => {
     const newErrors: FormErrors = {};
@@ -91,6 +115,7 @@ export default function Register() {
           fullName: formData.fullName,
           studentId: formData.studentId,
           course: formData.course,
+          section: formData.section,
         });
 
         const success = await register(
@@ -98,7 +123,8 @@ export default function Register() {
           formData.password,
           formData.fullName,
           formData.studentId,
-          formData.course
+          formData.course,
+          formData.section
         );
 
         if (success) {
@@ -177,13 +203,57 @@ export default function Register() {
             maxLength={10}
           />
 
-          <CustomInput
-            label="Course (Optional)"
+          <Text style={styles.label}>Course</Text>
+          <DropDownPicker
+            open={openCourseDropdown}
             value={formData.course}
-            onChangeText={(text) => setFormData({ ...formData, course: text })}
-            placeholder="e.g. Computer Science"
-            error={errors.course}
+            items={courseOptions}
+            setOpen={setOpenCourseDropdown}
+            setValue={(value) => {
+              if (typeof value === "function") {
+                const newValue = value(formData.course);
+                setFormData({ ...formData, course: newValue });
+              } else {
+                setFormData({ ...formData, course: value });
+              }
+            }}
+            style={styles.dropdown}
+            dropDownContainerStyle={styles.dropdownContainer}
+            placeholder="Select your course"
+            zIndex={3000}
+            zIndexInverse={1000}
           />
+          {errors.course ? (
+            <Text style={styles.errorText}>{errors.course}</Text>
+          ) : null}
+
+          <Text
+            style={[styles.label, { marginTop: openCourseDropdown ? 180 : 15 }]}
+          >
+            Section
+          </Text>
+          <DropDownPicker
+            open={openSectionDropdown}
+            value={formData.section}
+            items={sectionOptions}
+            setOpen={setOpenSectionDropdown}
+            setValue={(value) => {
+              if (typeof value === "function") {
+                const newValue = value(formData.section);
+                setFormData({ ...formData, section: newValue });
+              } else {
+                setFormData({ ...formData, section: value });
+              }
+            }}
+            style={styles.dropdown}
+            dropDownContainerStyle={styles.dropdownContainer}
+            placeholder="Select your section"
+            zIndex={2000}
+            zIndexInverse={2000}
+          />
+          {errors.section ? (
+            <Text style={styles.errorText}>{errors.section}</Text>
+          ) : null}
 
           <CustomInput
             label="Password"
@@ -203,6 +273,7 @@ export default function Register() {
                 />
               </TouchableOpacity>
             }
+            containerStyle={{ marginTop: openSectionDropdown ? 180 : 15 }}
           />
 
           <CustomInput
@@ -284,12 +355,25 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     color: Colors.light.text,
-    marginBottom: 5,
+    marginBottom: 8,
   },
   errorText: {
     color: Colors.light.error,
     fontSize: 12,
     marginTop: 5,
+  },
+  dropdown: {
+    backgroundColor: Colors.light.backgroundAlt,
+    borderWidth: 0,
+    borderRadius: 8,
+    marginBottom: 5,
+    height: 50,
+  },
+  dropdownContainer: {
+    backgroundColor: Colors.light.background,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 8,
   },
   registerButton: {
     backgroundColor: Colors.light.primary,

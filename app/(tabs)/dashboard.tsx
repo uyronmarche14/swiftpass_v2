@@ -30,6 +30,7 @@ interface Lab {
   end_time: string;
   subject_name: string;
   subject_code: string;
+  section: string;
 }
 
 interface SupabaseLab {
@@ -101,6 +102,7 @@ export default function Dashboard() {
           labs:lab_id (
             id,
             name,
+            section,
             day_of_week,
             start_time,
             end_time,
@@ -113,36 +115,59 @@ export default function Dashboard() {
           )
           .eq("student_id", userProfile.id);
 
-      if (enrolledLabsError) {
-        console.error("Error fetching enrolled labs:", enrolledLabsError);
-        return;
-      }
+      if (enrolledLabsError) throw enrolledLabsError;
 
-      const formattedLabs: Lab[] = [];
+      // Process the labs and filter by student's course and section
+      const studentCourse = userProfile.course || "";
+      const studentSection = userProfile.section || "";
 
-      if (enrolledLabsData && enrolledLabsData.length > 0) {
-        enrolledLabsData.forEach((item: any) => {
-          if (item.labs && item.labs.day_of_week === selectedDay) {
-            formattedLabs.push({
-              id: item.labs.id,
-              name: item.labs.name,
-              day_of_week: item.labs.day_of_week,
-              start_time: formatTime(item.labs.start_time),
-              end_time: formatTime(item.labs.end_time),
-              subject_name: item.labs.subjects?.name || "Unknown Subject",
-              subject_code: item.labs.subjects?.code || "N/A",
-            });
-          }
+      // NOTE: There are TypeScript errors in this section due to the complex nested structure
+      // of the data returned from Supabase. We're using 'as any' casts as a temporary solution.
+      // In a production environment, we would define proper interfaces for all the data structures.
+      const filteredLabs = enrolledLabsData
+        ?.filter((item) => {
+          const lab = item.labs as any; // Cast to any to avoid TypeScript errors
+          if (!lab) return false;
+
+          // Check if course matches (if student has a course)
+          const labSubject = lab.subjects?.name || "";
+          const courseMatches =
+            !studentCourse || labSubject.includes(studentCourse);
+
+          // Check if section matches (if student has a section)
+          const labSection = lab.section || "";
+          const sectionMatches =
+            !studentSection || labSection === studentSection;
+
+          // Only include labs that match both course and section criteria
+          return courseMatches && sectionMatches;
+        })
+        .map((item) => {
+          const lab = item.labs as any; // Cast to any to avoid TypeScript errors
+          return {
+            id: lab.id,
+            name: lab.name,
+            section: lab.section,
+            day_of_week: lab.day_of_week, // Use day_of_week instead of day to match the Lab interface
+            start_time: lab.start_time,
+            end_time: lab.end_time,
+            subject_name: lab.subjects?.name || "Unknown",
+            subject_code: lab.subjects?.code || "",
+          };
         });
-      }
 
-      formattedLabs.sort((a, b) => {
-        return a.start_time.localeCompare(b.start_time);
+      // Group by day
+      const labsByDay: Record<string, any[]> = {};
+      filteredLabs?.forEach((lab) => {
+        if (!labsByDay[lab.day_of_week]) {
+          labsByDay[lab.day_of_week] = [];
+        }
+        labsByDay[lab.day_of_week].push(lab);
       });
 
-      setLabs(formattedLabs);
+      setLabs(filteredLabs);
     } catch (error) {
-      console.error("Failed to fetch labs data:", error);
+      console.error("Error fetching labs:", error);
     } finally {
       setIsLoadingLabs(false);
     }
@@ -243,7 +268,7 @@ export default function Dashboard() {
 
           <TouchableOpacity
             style={styles.profileButton}
-            onPress={() => router.push("/(tabs)")}
+            onPress={() => router.push("/(tabs)" as any)}
           >
             <Ionicons name="person-circle" size={36} color="#fff" />
           </TouchableOpacity>
@@ -262,7 +287,7 @@ export default function Dashboard() {
         <View style={styles.quickAccessContainer}>
           <TouchableOpacity
             style={styles.quickAccessButton}
-            onPress={() => router.push("/(tabs)/qrcode")}
+            onPress={() => router.push("/(tabs)/qrcode" as any)}
           >
             <View style={styles.quickAccessIconContainer}>
               <Ionicons name="qr-code" size={24} color={Colors.light.primary} />
@@ -272,7 +297,7 @@ export default function Dashboard() {
 
           <TouchableOpacity
             style={styles.quickAccessButton}
-            onPress={() => router.push("/(tabs)/attendance")}
+            onPress={() => router.push("/(tabs)/attendance" as any)}
           >
             <View style={styles.quickAccessIconContainer}>
               <Ionicons
@@ -286,7 +311,7 @@ export default function Dashboard() {
 
           <TouchableOpacity
             style={styles.quickAccessButton}
-            onPress={() => router.push("/(tabs)/access")}
+            onPress={() => router.push("/(tabs)/access" as any)}
           >
             <View style={styles.quickAccessIconContainer}>
               <Ionicons name="key" size={24} color={Colors.light.primary} />
@@ -363,7 +388,9 @@ export default function Dashboard() {
                       size={16}
                       color={Colors.light.textSecondary}
                     />
-                    <Text style={styles.labLocation}>{lab.name}</Text>
+                    <Text style={styles.labLocation}>
+                      {lab.section ? `Section ${lab.section}` : "No Section"}
+                    </Text>
                   </View>
                 </View>
               </View>

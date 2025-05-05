@@ -1,4 +1,4 @@
-import { View, TextInput, Text, StyleSheet } from "react-native";
+import { View, TextInput, Text, StyleSheet, ViewStyle } from "react-native";
 import { Colors } from "../../constants/Colors";
 
 interface CustomInputProps {
@@ -13,6 +13,7 @@ interface CustomInputProps {
   keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   maxLength?: number;
+  containerStyle?: ViewStyle;
 }
 
 export function CustomInput({
@@ -27,9 +28,10 @@ export function CustomInput({
   keyboardType = "default",
   autoCapitalize = "none",
   maxLength,
+  containerStyle,
 }: CustomInputProps) {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       <Text style={styles.label}>{label}</Text>
       <View style={[styles.inputContainer, error && styles.inputError]}>
         {leftIcon && <View style={styles.leftIconContainer}>{leftIcon}</View>}
@@ -79,10 +81,10 @@ const styles = StyleSheet.create({
     color: "#000000", // Changed to black
   },
   inputError: {
-    borderColor: Colors.light.danger,
+    borderColor: Colors.light.error,
   },
   errorText: {
-    color: Colors.light.danger,
+    color: Colors.light.error,
     fontSize: 14,
     marginTop: 4,
   },

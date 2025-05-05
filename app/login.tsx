@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { router } from "expo-router";
+import { router, Link } from "expo-router";
 import { Colors } from "../constants/Colors";
 import { CustomInput } from "../components/ui/CustomInput";
 import { useAuth } from "../context/AuthContext";
@@ -125,6 +125,18 @@ export default function Login() {
               <Text style={styles.registerTextBold}>Register now</Text>
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.adminLoginButton}
+            onPress={() => router.push("/admin-login")}
+          >
+            <Ionicons
+              name="shield-outline"
+              size={20}
+              color={Colors.light.primary}
+            />
+            <Text style={styles.adminLoginText}>Administrator Login</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -201,5 +213,18 @@ const styles = StyleSheet.create({
   registerTextBold: {
     color: Colors.light.primary,
     fontWeight: "600",
+  },
+  adminLoginButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 16,
+    padding: 12,
+  },
+  adminLoginText: {
+    color: Colors.light.primary,
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 8,
   },
 });
