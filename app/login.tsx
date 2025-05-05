@@ -44,13 +44,26 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     if (validateForm()) {
       try {
+        console.log("Starting login process...");
         const success = await login(email, password);
-        if (!success) {
-          Alert.alert("Login Error", "Invalid email or password");
+        if (success) {
+          console.log("Login successful");
+        } else {
+          console.log("Login returned false");
+          Alert.alert(
+            "Login Error",
+            "Invalid email or password. Please try again."
+          );
         }
-      } catch (error) {
-        Alert.alert("Error", "An unexpected error occurred during login");
+      } catch (error: any) {
+        console.error("Login error:", error);
+        Alert.alert(
+          "Login Error",
+          error.message || "An unexpected error occurred during login"
+        );
       }
+    } else {
+      console.log("Login form validation failed");
     }
   };
 

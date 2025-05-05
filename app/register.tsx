@@ -81,22 +81,33 @@ export default function RegisterScreen() {
 
     if (Object.keys(newErrors).length === 0) {
       try {
+        console.log("Starting registration process...");
         const success = await register({
           fullName: formData.fullName,
           email: formData.email,
           studentId: formData.studentId,
           password: formData.password,
+          course: "Default Course",
         });
 
-        if (!success) {
-          Alert.alert("Registration Error", "Failed to create account");
+        if (success) {
+          console.log("Registration successful, redirecting to login");
+        } else {
+          console.log("Registration returned false");
+          Alert.alert(
+            "Registration Error",
+            "Failed to create account. Please try again."
+          );
         }
-      } catch (error) {
+      } catch (error: any) {
+        console.error("Registration error:", error);
         Alert.alert(
-          "Error",
-          "An unexpected error occurred during registration"
+          "Registration Error",
+          error.message || "An unexpected error occurred during registration"
         );
       }
+    } else {
+      console.log("Form validation failed:", newErrors);
     }
   };
 
