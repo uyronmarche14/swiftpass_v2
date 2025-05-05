@@ -18,6 +18,7 @@ import { Colors } from "../../constants/Colors";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { supabase } from "../../lib/supabase";
+import { CustomModal } from "../../components/ui/Modal";
 
 const { width } = Dimensions.get("window");
 
@@ -55,6 +56,12 @@ export default function Dashboard() {
   const [labs, setLabs] = useState<Lab[]>([]);
   const [selectedDay, setSelectedDay] = useState(getCurrentDayOfWeek());
   const [isLoadingLabs, setIsLoadingLabs] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalConfig, setModalConfig] = useState({
+    title: "",
+    message: "",
+    type: "info" as "error" | "success" | "warning" | "info",
+  });
 
   useEffect(() => {
     loadData();
@@ -149,13 +156,13 @@ export default function Dashboard() {
 
   function getCurrentDayOfWeek() {
     const days = [
-      "Sunday",
       "Monday",
       "Tuesday",
       "Wednesday",
       "Thursday",
       "Friday",
       "Saturday",
+      "Sunday",
     ];
     const today = new Date().getDay();
     return days[today];
@@ -194,6 +201,16 @@ export default function Dashboard() {
       day: "numeric",
     };
     return date.toLocaleDateString("en-US", options);
+  };
+
+  const handleEmergencyAccess = () => {
+    setModalConfig({
+      title: "Emergency Access",
+      message:
+        "Your request has been sent to the administrator. Please wait for approval.",
+      type: "info",
+    });
+    setModalVisible(true);
   };
 
   if (isLoading) {
@@ -368,7 +385,23 @@ export default function Dashboard() {
             </View>
           )}
         </View>
+
+        <TouchableOpacity
+          style={styles.emergencyButton}
+          onPress={handleEmergencyAccess}
+        >
+          <Ionicons name="warning" size={20} color={Colors.light.background} />
+          <Text style={styles.emergencyButtonText}>Emergency Access</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      <CustomModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        type={modalConfig.type}
+      />
     </SafeAreaView>
   );
 }
@@ -571,5 +604,18 @@ const styles = StyleSheet.create({
     color: Colors.light.icon,
     textAlign: "center",
     maxWidth: "80%",
+  },
+  emergencyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.light.primary,
+    padding: 12,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+  emergencyButtonText: {
+    color: Colors.light.background,
+    marginLeft: 8,
+    fontWeight: "600",
   },
 });

@@ -1,67 +1,47 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../constants/Colors";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
-  const insets = useSafeAreaInsets();
-
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors.light.primary,
-        tabBarInactiveTintColor: Colors.light.icon,
+        tabBarInactiveTintColor: Colors.light.textSecondary,
         tabBarStyle: {
-          backgroundColor: "#fff",
-          height: 60 + insets.bottom,
-          paddingBottom: insets.bottom,
-          borderTopWidth: 1,
-          borderTopColor: "#E5E5E5",
-          elevation: 0,
+          backgroundColor: Colors.light.background,
+          borderTopColor: Colors.light.border,
         },
-        tabBarIconStyle: {
-          marginTop: 6,
+        headerStyle: {
+          backgroundColor: Colors.light.background,
         },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          marginBottom: 6,
-        },
-        headerShown: false,
+        headerTintColor: Colors.light.text,
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="dashboard"
         options={{
-          title: "Profile",
+          title: "Labs",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
+            <Ionicons name="calendar" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="qrcode"
         options={{
-          title: "Lab Pass",
+          title: "QR Code",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="qr-code" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="attendance"
+        name="profile"
         options={{
-          title: "History",
+          title: "Profile",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="time" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: "Labs",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flask" size={size} color={color} />
+            <Ionicons name="person" size={size} color={color} />
           ),
         }}
       />

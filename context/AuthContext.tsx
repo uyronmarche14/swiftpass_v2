@@ -170,7 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(response.data.user);
       setIsAuthenticated(true);
       await fetchUserProfile(response.data.user.id);
-      router.replace("/(tabs)");
+      router.replace("/(tabs)/dashboard");
       return true;
     } catch (error: unknown) {
       console.error("Login error:", error);

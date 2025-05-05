@@ -5,55 +5,44 @@
 
 export const Colors = {
   light: {
-    background: "#FFFFFF",
-    text: "#1A1A1A",
-    tint: "#007AFF",
-    icon: "#8E8E93",
-    card: "#F2F2F7",
-    border: "#E5E5EA",
+    // Primary Colors
+    primary: "#FF3B30", // Main red
+    primaryLight: "#FF6B61", // Lighter red
+    primaryDark: "#D32F2F", // Darker red
+
+    // Secondary Colors
+    secondary: "#FFE5E3", // Very light red
+    secondaryLight: "#FFF5F4", // Almost white with red tint
+
+    // Background Colors
+    background: "#FFFFFF", // Pure white
+    backgroundAlt: "#F8F9FA", // Off-white
+    cardBackground: "#FFFFFF", // Card background
+
+    // Text Colors
+    text: "#1A1A1A", // Almost black
+    textSecondary: "#666666", // Dark gray
+    textTertiary: "#999999", // Medium gray
+
+    // Border Colors
+    border: "#E0E0E0", // Light gray
+    borderLight: "#F0F0F0", // Very light gray
+
+    // Status Colors
+    success: "#4CAF50",
     error: "#FF3B30",
-    success: "#34C759",
-    warning: "#FF9500",
-    danger: "#F44336",
-    primary: "#007AFF",
-    secondary: "#5856D6",
-    tertiary: "#FF2D55",
-    gray: {
-      100: "#F2F2F7",
-      200: "#E5E5EA",
-      300: "#D1D1D6",
-      400: "#C7C7CC",
-      500: "#AEAEB2",
-      600: "#8E8E93",
-      700: "#636366",
-      800: "#48484A",
-      900: "#3A3A3C",
-    },
+    warning: "#FFC107",
+    info: "#2196F3",
+
+    // Gradient Colors
+    gradientStart: "#FF3B30",
+    gradientEnd: "#FF2D55",
+
+    // Overlay Colors
+    overlay: "rgba(0, 0, 0, 0.5)",
+    overlayLight: "rgba(255, 59, 48, 0.1)",
   },
   dark: {
-    background: "#000000",
-    text: "#FFFFFF",
-    tint: "#0A84FF",
-    icon: "#8E8E93",
-    card: "#1C1C1E",
-    border: "#38383A",
-    error: "#FF453A",
-    success: "#32D74B",
-    warning: "#FF9F0A",
-    danger: "#F44336",
-    primary: "#0A84FF",
-    secondary: "#5E5CE6",
-    tertiary: "#FF375F",
-    gray: {
-      100: "#1C1C1E",
-      200: "#2C2C2E",
-      300: "#3A3A3C",
-      400: "#48484A",
-      500: "#636366",
-      600: "#8E8E93",
-      700: "#AEAEB2",
-      800: "#C7C7CC",
-      900: "#D1D1D6",
-    },
+    // Dark mode colors can be added here if needed
   },
 };
