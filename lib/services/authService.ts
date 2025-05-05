@@ -179,9 +179,18 @@ export class AuthService {
           userData.course
         );
         console.log("Student profile creation completed");
+
+        // Create permanent QR code for this user
+        await this.createPermanentQRCode(
+          data.user.id,
+          userData.fullName,
+          userData.studentId,
+          userData.course
+        );
+        console.log("Permanent QR code created");
       } catch (profileError) {
         console.warn(
-          "Profile creation error during registration:",
+          "Profile/QR creation error during registration:",
           profileError
         );
         // Continue with registration even if profile creation fails
@@ -269,6 +278,58 @@ export class AuthService {
       // This allows registration to succeed even if profile creation fails
       // The profile can be created later when the user logs in
       console.warn("Registration will continue despite profile creation error");
+    }
+  }
+
+  static async createPermanentQRCode(
+    userId: string,
+    fullName: string,
+    studentId: string,
+    course?: string
+  ): Promise<boolean> {
+    try {
+      console.log("Creating permanent QR code for user:", userId);
+
+      // Check if QR code already exists
+      const { data: existingQR, error: checkError } = await supabase
+        .from("qr_codes")
+        .select("id")
+        .eq("student_id", userId)
+        .single();
+
+      if (!checkError && existingQR) {
+        console.log("QR code already exists for this user");
+        return true;
+      }
+
+      // Create the permanent QR code data
+      const qrData = {
+        userId: userId,
+        studentId: studentId,
+        name: fullName,
+        course: course || "Not Specified",
+        created: new Date().toISOString(),
+      };
+
+      // Insert into qr_codes table
+      const { error } = await supabase.from("qr_codes").insert([
+        {
+          student_id: userId,
+          qr_data: qrData,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]);
+
+      if (error) {
+        console.error("Error creating QR code:", error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Failed to create permanent QR code:", error);
+      return false;
     }
   }
 }

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "swiftpass_2",
-    "slug": "swiftpass_2",
+    "name": "Lab Pass",
+    "slug": "lab-pass",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

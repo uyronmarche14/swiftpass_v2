@@ -9,8 +9,8 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#007AFF",
-        tabBarInactiveTintColor: "#8E8E93",
+        tabBarActiveTintColor: Colors.light.primary,
+        tabBarInactiveTintColor: Colors.light.icon,
         tabBarStyle: {
           backgroundColor: "#fff",
           height: 60 + insets.bottom,
@@ -30,38 +30,38 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="dashboard"
+        name="index"
         options={{
-          title: "Home",
+          title: "Profile",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size} color={color} />
+            <Ionicons name="person" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="qrcode"
         options={{
-          title: "QR Code",
+          title: "Lab Pass",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="qr-code" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="access"
+        name="attendance"
         options={{
-          title: "Access",
+          title: "History",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="key" size={size} color={color} />
+            <Ionicons name="time" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="attendance"
+        name="dashboard"
         options={{
-          title: "Attendance",
+          title: "Labs",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar" size={size} color={color} />
+            <Ionicons name="flask" size={size} color={color} />
           ),
         }}
       />

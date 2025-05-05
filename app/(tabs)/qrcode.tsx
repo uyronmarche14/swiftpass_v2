@@ -1,156 +1,58 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   ScrollView,
   ActivityIndicator,
   SafeAreaView,
   RefreshControl,
-  Share,
   Alert,
-  Platform,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
-import * as FileSystem from "expo-file-system";
-import * as MediaLibrary from "expo-media-library";
 import { Colors } from "../../constants/Colors";
 import QRCode from "react-native-qrcode-svg";
 import * as Haptics from "expo-haptics";
 
-// QR code validity in seconds
-const QR_CODE_VALIDITY = 60;
-
 export default function QRCodeScreen() {
   const { userProfile, isLoading } = useAuth();
   const [qrValue, setQrValue] = useState("");
-  const [timeLeft, setTimeLeft] = useState(QR_CODE_VALIDITY);
   const [qrLoading, setQrLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const qrRef = useRef<QRCode>(null);
-  const [permissionGranted, setPermissionGranted] = useState(false);
-
-  // Check media library permissions
-  useEffect(() => {
-    (async () => {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      setPermissionGranted(status === "granted");
-    })();
-  }, []);
 
   // Generate QR code data
   const generateQRData = useCallback(() => {
     if (!userProfile) return "";
 
-    // Create a unique QR code with timestamp and user data
+    // Create a persistent QR code with user data
     const qrData = {
       userId: userProfile.id,
       studentId: userProfile.student_id,
       name: userProfile.full_name,
-      timestamp: new Date().toISOString(),
-      validUntil: new Date(Date.now() + QR_CODE_VALIDITY * 1000).toISOString(),
-      randomToken: Math.random().toString(36).substring(2, 15),
+      course: userProfile.course || "Not Specified",
     };
 
     return JSON.stringify(qrData);
   }, [userProfile]);
 
-  // Generate new QR code
-  const generateNewQR = useCallback(() => {
-    setQrLoading(true);
-    const newQrValue = generateQRData();
-    setQrValue(newQrValue);
-    setTimeLeft(QR_CODE_VALIDITY);
-    setQrLoading(false);
-    // Provide haptic feedback on QR refresh
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [generateQRData]);
-
-  // Initialize QR code on load
+  // Set QR code on load
   useEffect(() => {
     if (userProfile) {
-      generateNewQR();
+      setQrLoading(true);
+      const qrData = generateQRData();
+      setQrValue(qrData);
+      setQrLoading(false);
     }
-  }, [userProfile, generateNewQR]);
-
-  // Timer countdown effect
-  useEffect(() => {
-    if (timeLeft <= 0) {
-      generateNewQR();
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timeLeft, generateNewQR]);
+  }, [userProfile, generateQRData]);
 
   // Handle pull-to-refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    generateNewQR();
+    // We're not generating a new QR code, just refreshing the view
     setRefreshing(false);
-  }, [generateNewQR]);
-
-  // Save QR code to device gallery
-  const saveQRToGallery = async () => {
-    try {
-      if (!permissionGranted) {
-        Alert.alert(
-          "Permission Required",
-          "Please grant storage permission to save QR code"
-        );
-        return;
-      }
-
-      if (!qrRef.current) return;
-
-      // Convert QR code to image
-      qrRef.current.toDataURL(async (data: string) => {
-        const fileUri = FileSystem.documentDirectory + "swiftpass_qrcode.png";
-        await FileSystem.writeAsStringAsync(fileUri, data, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        const asset = await MediaLibrary.createAssetAsync(fileUri);
-        await MediaLibrary.createAlbumAsync("SwiftPass", asset, false);
-
-        Alert.alert("Success", "QR code saved to gallery");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      });
-    } catch (error) {
-      console.error("Error saving QR code:", error);
-      Alert.alert("Error", "Failed to save QR code to gallery");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    }
-  };
-
-  // Share QR code
-  const shareQRCode = async () => {
-    try {
-      if (!qrRef.current) return;
-
-      qrRef.current.toDataURL(async (data: string) => {
-        const fileUri = FileSystem.documentDirectory + "swiftpass_qrcode.png";
-        await FileSystem.writeAsStringAsync(fileUri, data, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        await Share.share({
-          title: "My SwiftPass QR Code",
-          url: Platform.OS === "ios" ? fileUri : `file://${fileUri}`,
-        });
-      });
-    } catch (error) {
-      console.error("Error sharing QR code:", error);
-      Alert.alert("Error", "Failed to share QR code");
-    }
-  };
+  }, []);
 
   // Request emergency access
   const requestEmergencyAccess = () => {
@@ -181,7 +83,7 @@ export default function QRCodeScreen() {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.light.primary} />
-        <Text style={styles.loadingText}>Generating secure QR code...</Text>
+        <Text style={styles.loadingText}>Loading your QR code...</Text>
       </SafeAreaView>
     );
   }
@@ -195,19 +97,21 @@ export default function QRCodeScreen() {
         }
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Your Access QR Code</Text>
+          <Text style={styles.title}>Your Lab Access QR Code</Text>
           <Text style={styles.subtitle}>
             Use this QR code for lab access and attendance
           </Text>
         </View>
 
         <View style={styles.qrContainer}>
-          <View style={styles.validityContainer}>
-            <Text style={styles.validityText}>Valid for: </Text>
-            <Text
-              style={[styles.timer, timeLeft < 10 ? styles.timerWarning : null]}
-            >
-              {timeLeft}s
+          <View style={styles.infoNote}>
+            <Ionicons
+              name="information-circle-outline"
+              size={18}
+              color={Colors.light.tint}
+            />
+            <Text style={styles.infoText}>
+              This QR code is permanently linked to your account
             </Text>
           </View>
 
@@ -219,7 +123,6 @@ export default function QRCodeScreen() {
                 color="#000"
                 backgroundColor="#fff"
                 logoBackgroundColor="#fff"
-                getRef={(ref) => (qrRef.current = ref)}
               />
             ) : (
               <ActivityIndicator size="large" color={Colors.light.primary} />
@@ -244,89 +147,16 @@ export default function QRCodeScreen() {
           </View>
         </View>
 
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity style={styles.actionButton} onPress={generateNewQR}>
-            <Ionicons name="refresh" size={22} color="#fff" />
-            <Text style={styles.actionButtonText}>Refresh</Text>
-          </TouchableOpacity>
-
+        <View style={styles.emergencyContainer}>
           <TouchableOpacity
-            style={styles.actionButton}
-            onPress={saveQRToGallery}
+            style={styles.emergencyButton}
+            onPress={requestEmergencyAccess}
           >
-            <Ionicons name="save" size={22} color="#fff" />
-            <Text style={styles.actionButtonText}>Save</Text>
+            <Ionicons name="alert-circle-outline" size={20} color="#fff" />
+            <Text style={styles.emergencyButtonText}>
+              Request Emergency Access
+            </Text>
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionButton} onPress={shareQRCode}>
-            <Ionicons name="share" size={22} color="#fff" />
-            <Text style={styles.actionButtonText}>Share</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          style={styles.emergencyButton}
-          onPress={requestEmergencyAccess}
-        >
-          <Ionicons name="warning" size={22} color="#fff" />
-          <Text style={styles.emergencyButtonText}>
-            Request Emergency Access
-          </Text>
-        </TouchableOpacity>
-
-        <View style={styles.infoCard}>
-          <View style={styles.infoCardHeader}>
-            <Ionicons
-              name="information-circle"
-              size={22}
-              color={Colors.light.primary}
-            />
-            <Text style={styles.infoCardTitle}>How to use your QR Code</Text>
-          </View>
-
-          <View style={styles.infoItem}>
-            <Ionicons
-              name="time-outline"
-              size={18}
-              color={Colors.light.primary}
-            />
-            <Text style={styles.infoText}>
-              QR code refreshes automatically every minute for security
-            </Text>
-          </View>
-
-          <View style={styles.infoItem}>
-            <Ionicons
-              name="scan-outline"
-              size={18}
-              color={Colors.light.primary}
-            />
-            <Text style={styles.infoText}>
-              Scan at lab entrance to record attendance
-            </Text>
-          </View>
-
-          <View style={styles.infoItem}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={18}
-              color={Colors.light.primary}
-            />
-            <Text style={styles.infoText}>
-              Each code is unique and valid for a limited time
-            </Text>
-          </View>
-
-          <View style={styles.infoItem}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color={Colors.light.primary}
-            />
-            <Text style={styles.infoText}>
-              Use emergency access only when necessary
-            </Text>
-          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -336,171 +166,111 @@ export default function QRCodeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: Colors.light.background,
   },
   scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 30,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f8f9fa",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: "#666",
+    padding: 20,
+    paddingTop: 40,
   },
   header: {
-    marginTop: 50,
-    marginBottom: 20,
+    marginBottom: 24,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
+    fontSize: 24,
+    fontWeight: "bold",
     color: Colors.light.text,
-    textAlign: "center",
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: "#666",
-    textAlign: "center",
-    marginTop: 8,
+    color: Colors.light.icon,
   },
   qrContainer: {
     backgroundColor: "#fff",
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 20,
+    alignItems: "center",
+    elevation: 2,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
-    marginBottom: 20,
+    shadowRadius: 4,
+    marginBottom: 24,
   },
-  validityContainer: {
+  infoNote: {
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
-    marginBottom: 15,
-    backgroundColor: "#f0f4f9",
+    backgroundColor: `${Colors.light.tint}10`,
     padding: 10,
-    borderRadius: 10,
-  },
-  validityText: {
-    fontSize: 16,
-    color: "#555",
-  },
-  timer: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: Colors.light.primary,
-  },
-  timerWarning: {
-    color: Colors.light.warning,
-  },
-  qrCodeWrapper: {
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-    backgroundColor: "#fff",
-    borderRadius: 10,
+    borderRadius: 8,
     marginBottom: 20,
-    height: 280,
     width: "100%",
   },
+  infoText: {
+    fontSize: 14,
+    color: Colors.light.tint,
+    marginLeft: 8,
+  },
+  qrCodeWrapper: {
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#eee",
+    marginBottom: 20,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+  },
   infoContainer: {
+    width: "100%",
     borderTopWidth: 1,
-    borderTopColor: "#eee",
-    paddingTop: 15,
+    borderColor: "#eee",
+    paddingTop: 16,
   },
   infoRow: {
     flexDirection: "row",
-    marginBottom: 8,
+    marginBottom: 10,
   },
   infoLabel: {
     width: 60,
     fontSize: 16,
-    fontWeight: "600",
-    color: "#555",
+    fontWeight: "bold",
+    color: Colors.light.text,
   },
   infoValue: {
+    flex: 1,
     fontSize: 16,
-    color: "#333",
-    flex: 1,
+    color: Colors.light.text,
   },
-  actionsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  emergencyContainer: {
     marginBottom: 20,
-  },
-  actionButton: {
-    backgroundColor: Colors.light.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    flex: 1,
-    marginHorizontal: 5,
-  },
-  actionButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 15,
-    marginLeft: 6,
   },
   emergencyButton: {
     backgroundColor: Colors.light.danger,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    paddingVertical: 14,
     borderRadius: 12,
-    marginBottom: 20,
+    gap: 8,
   },
   emergencyButtonText: {
     color: "#fff",
     fontWeight: "600",
     fontSize: 16,
-    marginLeft: 8,
   },
-  infoCard: {
-    backgroundColor: "#fff",
-    borderRadius: 15,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
-    marginBottom: 20,
-  },
-  infoCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  infoCardTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: Colors.light.text,
-    marginLeft: 10,
-  },
-  infoItem: {
-    flexDirection: "row",
-    marginBottom: 12,
-    alignItems: "center",
-  },
-  infoText: {
-    fontSize: 14,
-    color: "#555",
-    marginLeft: 10,
+  loadingContainer: {
     flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: Colors.light.background,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.light.text,
   },
 });

@@ -46,7 +46,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
@@ -57,17 +57,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAuth = async () => {
     try {
       setIsLoading(true);
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      // First check if we have a stored session
+      const storedSession = await AsyncStorage.getItem("session");
+      const storedUser = await AsyncStorage.getItem("user");
+      const storedProfile = await AsyncStorage.getItem("userProfile");
 
-      if (session) {
+      if (storedSession && storedUser) {
+        // We have stored credentials, let's restore the session
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
         setIsAuthenticated(true);
-        setUser(session.user);
-        await fetchUserProfile(session.user.id);
+
+        if (storedProfile) {
+          setUserProfile(JSON.parse(storedProfile));
+        } else {
+          // If we have user but no profile, try to fetch it
+          await fetchUserProfile(userData.id);
+        }
+
+        // Also verify with Supabase that the session is still valid
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+          // If Supabase session is invalid, we need to refresh or log in again
+          console.log("Stored session expired, attempting to refresh");
+          const { error } = await supabase.auth.refreshSession();
+
+          if (error) {
+            console.error("Unable to refresh session:", error);
+            // Force logout as the session is invalid
+            await logout();
+            return;
+          }
+        }
+      } else {
+        // Check if Supabase has a valid session
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session) {
+          setIsAuthenticated(true);
+          setUser(session.user);
+          await fetchUserProfile(session.user.id);
+
+          // Store the session for future app launches
+          await AsyncStorage.setItem("user", JSON.stringify(session.user));
+          await AsyncStorage.setItem("session", JSON.stringify(session));
+        } else {
+          // No valid session found
+          setIsAuthenticated(false);
+          setUser(null);
+          setUserProfile(null);
+        }
       }
     } catch (error) {
       console.error("Auth check error:", error);
+      // If there's an error during auth check, reset to logged out state
+      setIsAuthenticated(false);
+      setUser(null);
+      setUserProfile(null);
     } finally {
       setIsLoading(false);
     }
@@ -160,9 +211,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.removeItem("session");
 
       router.replace("/login");
+      return true;
     } catch (error: any) {
       console.error("Logout error:", error);
       Alert.alert("Logout Error", error.message || "Failed to logout");
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -192,16 +245,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (response.success) {
         setUser(response.data.user);
         setIsAuthenticated(true);
+
+        // After successful registration and user creation
         await fetchUserProfile(response.data.user.id);
+
+        // Generate and store QR code data for the user
+        // This happens only once at registration time
+        await createUserQRCode(
+          response.data.user.id,
+          fullName,
+          studentId,
+          course
+        );
+
+        await AsyncStorage.setItem("user", JSON.stringify(response.data.user));
+        await AsyncStorage.setItem(
+          "session",
+          JSON.stringify(response.data.session)
+        );
+
         router.replace("/(tabs)");
         return true;
       } else {
         // If Supabase registration fails with a specific error, show it
         throw new Error(response.error || "Registration failed");
       }
-
-      // Note: We've removed the backend API fallback since it's not working
-      // and Supabase should handle all registrations directly
     } catch (error: unknown) {
       console.error("Registration error:", error);
       if (error instanceof Error) {
@@ -225,6 +293,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Create a QR code entry for the new user - only happens once at registration
+  const createUserQRCode = async (
+    userId: string,
+    fullName: string,
+    studentId: string,
+    course?: string
+  ) => {
+    try {
+      // Create QR code data
+      const qrData = {
+        userId: userId,
+        studentId: studentId,
+        name: fullName,
+        course: course || "Not Specified",
+      };
+
+      // Insert the QR code data into the qr_codes table
+      const { error } = await supabase.from("qr_codes").insert([
+        {
+          student_id: userId,
+          qr_data: qrData,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ]);
+
+      if (error) {
+        console.error("Error creating QR code:", error);
+        return false;
+      }
+
+      console.log("QR code created successfully for user:", userId);
+      return true;
+    } catch (error) {
+      console.error("Failed to create QR code:", error);
+      return false;
+    }
+  };
+
   const refreshUserProfile = async () => {
     if (user) {
       await fetchUserProfile(user.id);
@@ -238,49 +345,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
-      try {
-        // First try the backend API
-        const response = await fetch(`${API_URL}/qr/generate/${user.id}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          // Add a timeout to fail faster if server is unreachable
-          signal: AbortSignal.timeout(5000),
-        });
+      // First check if user has a QR code in the database
+      const { data: qrCodeData, error: qrError } = await supabase
+        .from("qr_codes")
+        .select("qr_data")
+        .eq("student_id", user.id)
+        .single();
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to generate QR code");
-        }
+      if (qrError) {
+        // If no QR code exists, create one (this should only happen for existing accounts before this update)
+        if (qrError.code === "PGRST116" && userProfile) {
+          // No QR code found, create a new permanent one
+          const success = await createUserQRCode(
+            user.id,
+            userProfile.full_name,
+            userProfile.student_id,
+            userProfile.course
+          );
 
-        const data = await response.json();
-        return data.qrCode;
-      } catch (apiError) {
-        console.warn(
-          "Backend QR API unreachable, generating local QR data",
-          apiError
-        );
+          if (success) {
+            // Try to get the newly created QR code
+            const { data: newQrData, error: newQrError } = await supabase
+              .from("qr_codes")
+              .select("qr_data")
+              .eq("student_id", user.id)
+              .single();
 
-        // Fallback: Generate a simple QR code string with user data
-        if (userProfile) {
-          // Create a JSON object with essential user information
-          const qrData = JSON.stringify({
-            userId: user.id,
-            email: user.email,
-            fullName: userProfile.full_name,
-            studentId: userProfile.student_id,
-            course: userProfile.course || "Not Specified",
-            timestamp: new Date().toISOString(),
-            type: "local",
-          });
+            if (newQrError) {
+              throw new Error("Failed to retrieve newly created QR code");
+            }
 
-          // Return the data to be encoded as QR
-          return qrData;
+            return JSON.stringify(newQrData.qr_data);
+          } else {
+            throw new Error("Failed to create QR code");
+          }
         } else {
-          throw new Error("User profile unavailable for QR code generation");
+          throw new Error("Error retrieving QR code: " + qrError.message);
         }
       }
+
+      // Return the user's permanent QR code data
+      return JSON.stringify(qrCodeData.qr_data);
     } catch (error: unknown) {
       console.error("QR code error:", error);
       if (error instanceof Error) {
@@ -288,29 +393,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         Alert.alert(
           "Error",
-          "An unexpected error occurred while generating your QR code"
+          "An unexpected error occurred while retrieving your QR code"
         );
       }
       return null;
     }
   };
 
+  const contextValue: AuthContextType = {
+    isAuthenticated,
+    isLoading,
+    user,
+    userProfile,
+    login,
+    logout,
+    register,
+    refreshUserProfile,
+    getQRCode,
+  };
+
   return (
-    <AuthContext.Provider
-      value={{
-        isAuthenticated,
-        isLoading,
-        user,
-        userProfile,
-        login,
-        logout,
-        register,
-        refreshUserProfile,
-        getQRCode,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
   );
 }
 

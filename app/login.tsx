@@ -2,34 +2,49 @@ import React, { useState } from "react";
 import {
   View,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   Text,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Image,
 } from "react-native";
 import { router } from "expo-router";
 import { Colors } from "../constants/Colors";
 import { CustomInput } from "../components/ui/CustomInput";
 import { useAuth } from "../context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
+import { CustomModal } from "../components/ui/Modal";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const { login, isLoading } = useAuth();
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalConfig, setModalConfig] = useState({
+    title: "",
+    message: "",
+    type: "error" as "error" | "success" | "warning" | "info",
+  });
 
   const handleLogin = async () => {
     try {
       const success = await login(email, password);
       if (!success) {
-        Alert.alert("Login Error", "Invalid email or password");
+        setModalConfig({
+          title: "Login Failed",
+          message: "Invalid email or password. Please try again.",
+          type: "error",
+        });
+        setModalVisible(true);
       }
     } catch (error) {
-      Alert.alert("Error", "An unexpected error occurred during login");
+      setModalConfig({
+        title: "Error",
+        message: "An unexpected error occurred during login. Please try again.",
+        type: "error",
+      });
+      setModalVisible(true);
     }
   };
 
@@ -112,6 +127,14 @@ export default function Login() {
           </TouchableOpacity>
         </View>
       </View>
+
+      <CustomModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        type={modalConfig.type}
+      />
     </KeyboardAvoidingView>
   );
 }

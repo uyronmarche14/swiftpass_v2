@@ -1,8 +1,24 @@
-# Welcome to your Expo app 👋
+# Lab Pass
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A mobile application for students to access university labs using QR codes.
 
-## Get started
+## Features
+
+- **Student Authentication**: Secure login and registration for students
+- **Permanent QR Code**: Each student gets a unique, permanent QR code for lab access
+- **Attendance Tracking**: View your lab attendance history
+- **Profile Management**: Update your profile and student information
+- **Lab History**: See which labs you've attended and when
+
+## Technology Stack
+
+- **Frontend**: React Native with Expo
+- **Backend**: Supabase (PostgreSQL database and authentication)
+- **State Management**: React Context API
+- **Storage**: AsyncStorage for persistent sessions
+- **Navigation**: Expo Router
+
+## Getting Started
 
 1. Install dependencies
 
@@ -10,41 +26,43 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
+2. Configure Supabase
 
-   ```bash
-    npx expo start
+   Create a `.env` file in the project root with your Supabase credentials:
+
+   ```
+   EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
    ```
 
-In the output, you'll find options to open the app in a
+3. Start the app
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+   ```bash
+   npx expo start
+   ```
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Database Schema
 
-## Get a fresh project
+The app uses the following main tables:
 
-When you're ready, run:
+- **students**: User profiles with student information
+- **labs**: Lab information including schedules
+- **attendance**: Records of lab attendance
+- **qr_codes**: Permanent QR code data for each student
 
-```bash
-npm run reset-project
-```
+## Authentication Flow
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+1. Students register with email, password, and student information
+2. A permanent QR code is generated and stored in the database
+3. Login sessions are persisted using AsyncStorage
+4. The QR code can be scanned at lab entrances to record attendance
 
-## Learn more
+## Contributing
 
-To learn more about developing your project with Expo, look at the following resources:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## License
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+This project is licensed under the MIT License.

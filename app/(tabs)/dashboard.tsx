@@ -17,8 +17,34 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../constants/Colors";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { supabase } from "../../lib/supabase";
 
 const { width } = Dimensions.get("window");
+
+interface Lab {
+  id: string;
+  name: string;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  subject_name: string;
+  subject_code: string;
+}
+
+interface SupabaseLab {
+  lab_id: string;
+  labs: {
+    id: string;
+    name: string;
+    day_of_week: string;
+    start_time: string;
+    end_time: string;
+    subjects?: {
+      name: string;
+      code: string;
+    };
+  };
+}
 
 export default function Dashboard() {
   const { user, userProfile, refreshUserProfile, isLoading, getQRCode } =
@@ -26,6 +52,9 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
+  const [labs, setLabs] = useState<Lab[]>([]);
+  const [selectedDay, setSelectedDay] = useState(getCurrentDayOfWeek());
+  const [isLoadingLabs, setIsLoadingLabs] = useState(true);
 
   useEffect(() => {
     loadData();
@@ -34,6 +63,9 @@ export default function Dashboard() {
   const loadData = async () => {
     await refreshUserProfile();
     loadQRCode();
+    if (userProfile) {
+      await fetchLabs();
+    }
   };
 
   const loadQRCode = async () => {
@@ -48,13 +80,111 @@ export default function Dashboard() {
     }
   };
 
-  const onRefresh = async () => {
+  const fetchLabs = async () => {
+    try {
+      setIsLoadingLabs(true);
+      if (!userProfile) return;
+
+      const { data: enrolledLabsData, error: enrolledLabsError } =
+        await supabase
+          .from("student_labs")
+          .select(
+            `
+          lab_id,
+          labs:lab_id (
+            id,
+            name,
+            day_of_week,
+            start_time,
+            end_time,
+            subjects:subject_id (
+              name,
+              code
+            )
+          )
+        `
+          )
+          .eq("student_id", userProfile.id);
+
+      if (enrolledLabsError) {
+        console.error("Error fetching enrolled labs:", enrolledLabsError);
+        return;
+      }
+
+      const formattedLabs: Lab[] = [];
+
+      if (enrolledLabsData && enrolledLabsData.length > 0) {
+        enrolledLabsData.forEach((item: any) => {
+          if (item.labs && item.labs.day_of_week === selectedDay) {
+            formattedLabs.push({
+              id: item.labs.id,
+              name: item.labs.name,
+              day_of_week: item.labs.day_of_week,
+              start_time: formatTime(item.labs.start_time),
+              end_time: formatTime(item.labs.end_time),
+              subject_name: item.labs.subjects?.name || "Unknown Subject",
+              subject_code: item.labs.subjects?.code || "N/A",
+            });
+          }
+        });
+      }
+
+      formattedLabs.sort((a, b) => {
+        return a.start_time.localeCompare(b.start_time);
+      });
+
+      setLabs(formattedLabs);
+    } catch (error) {
+      console.error("Failed to fetch labs data:", error);
+    } finally {
+      setIsLoadingLabs(false);
+    }
+  };
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
+  }, []);
+
+  function getCurrentDayOfWeek() {
+    const days = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const today = new Date().getDay();
+    return days[today];
+  }
+
+  function formatTime(timeString: string) {
+    try {
+      const [hours, minutes] = timeString.split(":");
+      const hour = parseInt(hours, 10);
+      const minute = parseInt(minutes, 10);
+      const period = hour >= 12 ? "PM" : "AM";
+      const hour12 = hour % 12 || 12;
+      return `${hour12}:${minute.toString().padStart(2, "0")} ${period}`;
+    } catch (error) {
+      return timeString;
+    }
+  }
+
+  const getDayButtonStyle = (day: string) => {
+    return [styles.dayButton, selectedDay === day && styles.selectedDayButton];
   };
 
-  // Get current date and time
+  const getDayTextStyle = (day: string) => {
+    return [
+      styles.dayButtonText,
+      selectedDay === day && styles.selectedDayButtonText,
+    ];
+  };
+
   const getCurrentDate = () => {
     const date = new Date();
     const options: Intl.DateTimeFormatOptions = {
@@ -64,59 +194,6 @@ export default function Dashboard() {
       day: "numeric",
     };
     return date.toLocaleDateString("en-US", options);
-  };
-
-  // Mock upcoming classes
-  const upcomingClasses = [
-    {
-      id: "1",
-      time: "09:00 AM",
-      name: "Computer Science 101",
-      location: "Computer Lab",
-      duration: "2 hours",
-    },
-    {
-      id: "2",
-      time: "02:00 PM",
-      name: "Physics 201",
-      location: "Physics Lab",
-      duration: "1.5 hours",
-    },
-  ];
-
-  // Mock notifications
-  const notifications = [
-    {
-      id: "1",
-      message: "Your attendance rate is 95% this month",
-      time: "2 hours ago",
-      type: "success",
-    },
-    {
-      id: "2",
-      message: "Physics 201 class rescheduled to 2:00 PM",
-      time: "1 day ago",
-      type: "info",
-    },
-    {
-      id: "3",
-      message: "You have missed Chemistry 101 class",
-      time: "2 days ago",
-      type: "warning",
-    },
-  ];
-
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case "success":
-        return <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />;
-      case "warning":
-        return <Ionicons name="alert-circle" size={24} color="#FFC107" />;
-      case "info":
-        return <Ionicons name="information-circle" size={24} color="#2196F3" />;
-      default:
-        return <Ionicons name="notifications" size={24} color="#757575" />;
-    }
   };
 
   if (isLoading) {
@@ -212,104 +289,84 @@ export default function Dashboard() {
           </TouchableOpacity>
         </View>
 
-        {/* Today's Schedule */}
+        {/* Lab Schedule */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Today's Schedule</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>See All</Text>
-            </TouchableOpacity>
+            <Text style={styles.sectionTitle}>Lab Schedule</Text>
           </View>
 
-          {upcomingClasses.length > 0 ? (
-            upcomingClasses.map((classItem) => (
-              <View key={classItem.id} style={styles.scheduleCard}>
-                <View style={styles.scheduleTimeContainer}>
-                  <Text style={styles.scheduleTime}>{classItem.time}</Text>
-                  <Text style={styles.scheduleDuration}>
-                    {classItem.duration}
-                  </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.daySelector}
+            contentContainerStyle={styles.daySelectorContent}
+          >
+            {[
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday",
+            ].map((day) => (
+              <TouchableOpacity
+                key={day}
+                style={getDayButtonStyle(day)}
+                onPress={() => {
+                  setSelectedDay(day);
+                  fetchLabs();
+                }}
+              >
+                <Text style={getDayTextStyle(day)}>{day}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {isLoadingLabs ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={Colors.light.primary} />
+              <Text style={styles.loadingText}>Loading labs...</Text>
+            </View>
+          ) : labs.length > 0 ? (
+            labs.map((lab) => (
+              <View key={lab.id} style={styles.labCard}>
+                <View style={styles.labTimeContainer}>
+                  <Text style={styles.labTime}>{lab.start_time}</Text>
+                  <View style={styles.timeLine} />
+                  <Text style={styles.labEndTime}>{lab.end_time}</Text>
                 </View>
 
-                <View style={styles.scheduleDetails}>
-                  <Text style={styles.scheduleTitle}>{classItem.name}</Text>
-                  <View style={styles.scheduleLocationContainer}>
-                    <Ionicons name="location" size={16} color="#757575" />
-                    <Text style={styles.scheduleLocation}>
-                      {classItem.location}
-                    </Text>
+                <View style={styles.labDetails}>
+                  <Text style={styles.labSubjectCode}>{lab.subject_code}</Text>
+                  <Text style={styles.labTitle}>{lab.subject_name}</Text>
+                  <View style={styles.labLocationContainer}>
+                    <Ionicons
+                      name="location-outline"
+                      size={16}
+                      color={Colors.light.icon}
+                    />
+                    <Text style={styles.labLocation}>{lab.name}</Text>
                   </View>
                 </View>
-
-                <TouchableOpacity style={styles.scheduleAction}>
-                  <Ionicons name="chevron-forward" size={20} color="#bbb" />
-                </TouchableOpacity>
               </View>
             ))
           ) : (
-            <View style={styles.emptyScheduleContainer}>
-              <Ionicons name="calendar-outline" size={48} color="#ccc" />
-              <Text style={styles.emptyScheduleText}>
-                No classes scheduled for today
+            <View style={styles.emptyState}>
+              <Ionicons
+                name="flask-outline"
+                size={48}
+                color={Colors.light.icon}
+              />
+              <Text style={styles.emptyStateText}>
+                No labs scheduled for {selectedDay}
+              </Text>
+              <Text style={styles.emptyStateSubtext}>
+                Your lab schedule will appear here once it's added by an
+                administrator
               </Text>
             </View>
           )}
-        </View>
-
-        {/* Notifications */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Notifications</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>See All</Text>
-            </TouchableOpacity>
-          </View>
-
-          {notifications.map((notification) => (
-            <View key={notification.id} style={styles.notificationCard}>
-              <View style={styles.notificationIconContainer}>
-                {getNotificationIcon(notification.type)}
-              </View>
-
-              <View style={styles.notificationContent}>
-                <Text style={styles.notificationMessage}>
-                  {notification.message}
-                </Text>
-                <Text style={styles.notificationTime}>{notification.time}</Text>
-              </View>
-
-              <TouchableOpacity style={styles.notificationAction}>
-                <Ionicons name="ellipsis-vertical" size={20} color="#bbb" />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-
-        {/* Stats Summary */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statsCard}>
-            <View style={styles.statsIconContainer}>
-              <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-            </View>
-            <Text style={styles.statsNumber}>95%</Text>
-            <Text style={styles.statsLabel}>Attendance</Text>
-          </View>
-
-          <View style={styles.statsCard}>
-            <View style={styles.statsIconContainer}>
-              <Ionicons name="time" size={24} color="#FFC107" />
-            </View>
-            <Text style={styles.statsNumber}>3</Text>
-            <Text style={styles.statsLabel}>Late Arrivals</Text>
-          </View>
-
-          <View style={styles.statsCard}>
-            <View style={styles.statsIconContainer}>
-              <Ionicons name="calendar" size={24} color="#2196F3" />
-            </View>
-            <Text style={styles.statsNumber}>24</Text>
-            <Text style={styles.statsLabel}>Classes</Text>
-          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -408,132 +465,111 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
   },
-  seeAllText: {
-    fontSize: 14,
-    color: Colors.light.primary,
+  daySelector: {
+    marginBottom: 16,
   },
-  scheduleCard: {
+  daySelectorContent: {
+    paddingRight: 20,
+    paddingLeft: 4,
+  },
+  dayButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 10,
+    borderRadius: 20,
+    backgroundColor: "#f0f0f0",
+  },
+  selectedDayButton: {
+    backgroundColor: Colors.light.primary,
+  },
+  dayButtonText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  selectedDayButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  labCard: {
     flexDirection: "row",
-    alignItems: "center",
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 10,
+    marginBottom: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowRadius: 8,
     elevation: 2,
   },
-  scheduleTimeContainer: {
-    width: 80,
+  labTimeContainer: {
     alignItems: "center",
+    width: 80,
   },
-  scheduleTime: {
+  labTime: {
     fontSize: 16,
     fontWeight: "600",
     color: Colors.light.primary,
   },
-  scheduleDuration: {
-    fontSize: 12,
-    color: "#757575",
-    marginTop: 4,
+  timeLine: {
+    width: 2,
+    backgroundColor: "#eee",
+    height: 30,
+    marginVertical: 8,
   },
-  scheduleDetails: {
-    flex: 1,
-    paddingHorizontal: 12,
-  },
-  scheduleTitle: {
+  labEndTime: {
     fontSize: 16,
-    fontWeight: "500",
-    color: "#333",
-    marginBottom: 4,
+    color: Colors.light.icon,
   },
-  scheduleLocationContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  labDetails: {
+    flex: 1,
+    marginLeft: 16,
   },
-  scheduleLocation: {
+  labSubjectCode: {
     fontSize: 13,
-    color: "#757575",
-    marginLeft: 4,
-  },
-  scheduleAction: {
-    padding: 4,
-  },
-  emptyScheduleContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 30,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-  },
-  emptyScheduleText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-  },
-  notificationCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  notificationIconContainer: {
-    marginRight: 12,
-  },
-  notificationContent: {
-    flex: 1,
-  },
-  notificationMessage: {
-    fontSize: 14,
-    color: "#333",
+    color: Colors.light.icon,
     marginBottom: 4,
   },
-  notificationTime: {
-    fontSize: 12,
-    color: "#757575",
-  },
-  notificationAction: {
-    padding: 4,
-  },
-  statsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 8,
-  },
-  statsCard: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginHorizontal: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  statsIconContainer: {
+  labTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: Colors.light.text,
     marginBottom: 8,
   },
-  statsNumber: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#333",
+  labLocationContainer: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  statsLabel: {
-    fontSize: 12,
-    color: "#757575",
+  labLocation: {
+    fontSize: 14,
+    color: Colors.light.icon,
+    marginLeft: 4,
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    marginTop: 24,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: Colors.light.text,
+    marginTop: 16,
+    marginBottom: 8,
     textAlign: "center",
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: Colors.light.icon,
+    textAlign: "center",
+    maxWidth: "80%",
   },
 });

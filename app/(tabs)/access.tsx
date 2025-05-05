@@ -10,10 +10,13 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Alert,
 } from "react-native";
 import { Colors } from "../../constants/Colors";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
+import * as Haptics from "expo-haptics";
+import { supabase } from "../../lib/supabase";
 
 interface AccessHistoryItem {
   id: string;
@@ -31,55 +34,80 @@ interface ClassItem {
   duration: string;
 }
 
-// Mock access history data
-const mockAccessHistory: AccessHistoryItem[] = [
-  {
-    id: "1",
-    location: "Computer Lab",
-    action: "Entry",
-    timestamp: "2024-05-02T09:15:00Z",
-    success: true,
-  },
-  {
-    id: "2",
-    location: "Computer Lab",
-    action: "Exit",
-    timestamp: "2024-05-02T11:30:00Z",
-    success: true,
-  },
-  {
-    id: "3",
-    location: "Physics Lab",
-    action: "Entry",
-    timestamp: "2024-05-01T14:00:00Z",
-    success: true,
-  },
-  {
-    id: "4",
-    location: "Physics Lab",
-    action: "Exit",
-    timestamp: "2024-05-01T16:15:00Z",
-    success: true,
-  },
-  {
-    id: "5",
-    location: "Chemistry Lab",
-    action: "Entry",
-    timestamp: "2024-04-30T10:00:00Z",
-    success: false,
-  },
-];
-
 export default function AccessScreen() {
   const { userProfile } = useAuth();
-  const [accessHistory, setAccessHistory] =
-    useState<AccessHistoryItem[]>(mockAccessHistory);
+  const [accessHistory, setAccessHistory] = useState<AccessHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("access"); // 'access' or 'history'
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [activeTab, setActiveTab] = useState("history");
   const [unlockAnimation] = useState(new Animated.Value(0));
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Simulate a door unlock
+  useEffect(() => {
+    if (userProfile) {
+      fetchAccessHistory();
+    }
+  }, [userProfile]);
+
+  const fetchAccessHistory = async () => {
+    try {
+      setIsLoadingHistory(true);
+      if (!userProfile) return;
+
+      const { data, error } = await supabase
+        .from("attendance")
+        .select(
+          `
+          id,
+          time_in,
+          time_out,
+          labs:lab_id (
+            name
+          )
+        `
+        )
+        .eq("student_id", userProfile.id)
+        .order("time_in", { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.error("Error fetching access history:", error);
+        return;
+      }
+
+      // Transform attendance data into access history format
+      const formattedHistory: AccessHistoryItem[] = [];
+
+      data.forEach((item: any) => {
+        // Add entry record
+        formattedHistory.push({
+          id: `${item.id}-entry`,
+          location: item.labs?.name || "Unknown Lab",
+          action: "Entry",
+          timestamp: item.time_in,
+          success: true,
+        });
+
+        // Add exit record if exists
+        if (item.time_out) {
+          formattedHistory.push({
+            id: `${item.id}-exit`,
+            location: item.labs?.name || "Unknown Lab",
+            action: "Exit",
+            timestamp: item.time_out,
+            success: true,
+          });
+        }
+      });
+
+      setAccessHistory(formattedHistory);
+    } catch (error) {
+      console.error("Failed to fetch access history:", error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
   const simulateUnlock = () => {
     setIsLoading(true);
 
@@ -105,20 +133,35 @@ export default function AccessScreen() {
         setShowSuccess(false);
       });
 
-      // Add this access to history
-      const newAccessEvent: AccessHistoryItem = {
-        id: String(Date.now()),
-        location: "Main Entrance",
-        action: "Entry",
-        timestamp: new Date().toISOString(),
-        success: true,
-      };
-
-      setAccessHistory([newAccessEvent, ...accessHistory]);
+      // Refresh access history after successful unlock
+      fetchAccessHistory();
     }, 2000);
   };
 
-  // Format the timestamp into a readable date and time
+  const requestEmergencyAccess = () => {
+    Alert.alert(
+      "Emergency Access Request",
+      "Do you want to request emergency access?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Request",
+          onPress: () => {
+            Alert.alert(
+              "Request Sent",
+              "Your emergency access request has been sent to administrators. Please wait for approval."
+            );
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          },
+          style: "default",
+        },
+      ]
+    );
+  };
+
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleString("en-US", {
@@ -219,6 +262,18 @@ export default function AccessScreen() {
 
       {activeTab === "access" ? (
         <ScrollView style={styles.content}>
+          <View style={styles.emergencyContainer}>
+            <TouchableOpacity
+              style={styles.emergencyButton}
+              onPress={requestEmergencyAccess}
+            >
+              <Ionicons name="alert-circle-outline" size={20} color="#fff" />
+              <Text style={styles.emergencyButtonText}>
+                Request Emergency Access
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.lockContainer}>
             {showSuccess ? (
               <Animated.View
@@ -337,10 +392,16 @@ export default function AccessScreen() {
           )}
           ListEmptyComponent={() => (
             <View style={styles.emptyHistory}>
-              <Ionicons name="document" size={50} color="#ccc" />
-              <Text style={styles.emptyHistoryText}>
-                No access history found
-              </Text>
+              {isLoadingHistory ? (
+                <ActivityIndicator size="large" color={Colors.light.primary} />
+              ) : (
+                <>
+                  <Ionicons name="document" size={50} color="#ccc" />
+                  <Text style={styles.emptyHistoryText}>
+                    No access history found
+                  </Text>
+                </>
+              )}
             </View>
           )}
         />
@@ -397,6 +458,23 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  emergencyContainer: {
+    marginBottom: 20,
+  },
+  emergencyButton: {
+    backgroundColor: Colors.light.danger,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  emergencyButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 16,
   },
   lockContainer: {
     alignItems: "center",

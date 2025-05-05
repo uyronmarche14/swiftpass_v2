@@ -9,6 +9,7 @@ interface CustomInputProps {
   secureTextEntry?: boolean;
   error?: string;
   rightIcon?: React.ReactNode;
+  leftIcon?: React.ReactNode;
   keyboardType?: "default" | "email-address" | "numeric" | "phone-pad";
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   maxLength?: number;
@@ -22,6 +23,7 @@ export function CustomInput({
   secureTextEntry,
   error,
   rightIcon,
+  leftIcon,
   keyboardType = "default",
   autoCapitalize = "none",
   maxLength,
@@ -30,6 +32,7 @@ export function CustomInput({
     <View style={styles.container}>
       <Text style={styles.label}>{label}</Text>
       <View style={[styles.inputContainer, error && styles.inputError]}>
+        {leftIcon && <View style={styles.leftIconContainer}>{leftIcon}</View>}
         <TextInput
           style={styles.input}
           value={value}
@@ -41,7 +44,9 @@ export function CustomInput({
           autoCapitalize={autoCapitalize}
           maxLength={maxLength}
         />
-        {rightIcon}
+        {rightIcon && (
+          <View style={styles.rightIconContainer}>{rightIcon}</View>
+        )}
       </View>
       {error && <Text style={styles.errorText}>{error}</Text>}
     </View>
@@ -80,5 +85,11 @@ const styles = StyleSheet.create({
     color: Colors.light.danger,
     fontSize: 14,
     marginTop: 4,
+  },
+  leftIconContainer: {
+    marginRight: 10,
+  },
+  rightIconContainer: {
+    marginLeft: 10,
   },
 });

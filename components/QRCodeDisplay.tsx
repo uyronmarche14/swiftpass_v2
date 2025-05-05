@@ -10,6 +10,8 @@ import {
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import { Card, Button } from "react-native-paper";
+import QRCode from "react-native-qrcode-svg";
+import { Colors } from "../constants/Colors";
 
 export const QRCodeDisplay = () => {
   const { getQRCode, userProfile, isLoading } = useAuth();
@@ -42,7 +44,7 @@ export const QRCodeDisplay = () => {
   if (isLoading || loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0000ff" />
+        <ActivityIndicator size="large" color={Colors.light.primary} />
         <Text style={styles.loadingText}>Loading your QR code...</Text>
       </View>
     );
@@ -57,60 +59,36 @@ export const QRCodeDisplay = () => {
     >
       <Card style={styles.card}>
         <Card.Title
-          title="Your Attendance QR Code"
-          subtitle="Scan this code to record your attendance"
+          title="Your Lab Access QR Code"
+          titleStyle={styles.cardTitle}
         />
-        <Card.Content>
+        <Card.Content style={styles.cardContent}>
           {qrCode ? (
             <View style={styles.qrContainer}>
-              <Image
-                source={{ uri: qrCode }}
-                style={styles.qrCode}
-                resizeMode="contain"
+              <QRCode
+                value={qrCode}
+                size={200}
+                backgroundColor="#fff"
+                color="#000"
               />
               <Text style={styles.infoText}>
-                Student ID: {userProfile?.student_id}
-              </Text>
-              <Text style={styles.infoText}>
-                Name: {userProfile?.full_name}
+                Scan this code for lab access and attendance
               </Text>
             </View>
           ) : (
-            <View style={styles.noQrContainer}>
-              <Text style={styles.noQrText}>
-                No QR code available. Please check your profile information.
-              </Text>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No QR code available</Text>
               <Button
                 mode="contained"
                 onPress={loadQRCode}
-                style={styles.refreshButton}
+                style={styles.retryButton}
               >
                 Generate QR Code
               </Button>
             </View>
           )}
         </Card.Content>
-        <Card.Actions>
-          <Button onPress={loadQRCode}>Refresh</Button>
-        </Card.Actions>
       </Card>
-
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>How to use your QR code</Text>
-        <Text style={styles.infoDescription}>
-          1. Ensure your QR code is clearly visible on your screen.
-        </Text>
-        <Text style={styles.infoDescription}>
-          2. Present your QR code to the scanner at the entrance of your lab.
-        </Text>
-        <Text style={styles.infoDescription}>
-          3. Wait for the confirmation beep to ensure your attendance is
-          recorded.
-        </Text>
-        <Text style={styles.infoDescription}>
-          4. You can refresh your QR code if needed.
-        </Text>
-      </View>
     </ScrollView>
   );
 };
@@ -119,64 +97,57 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 16,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: Colors.light.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: Colors.light.background,
   },
   loadingText: {
-    marginTop: 12,
+    marginTop: 16,
     fontSize: 16,
-    color: "#666",
+    color: Colors.light.text,
   },
   card: {
-    marginBottom: 16,
+    padding: 8,
     elevation: 4,
+    borderRadius: 12,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  cardContent: {
+    alignItems: "center",
+    padding: 16,
   },
   qrContainer: {
     alignItems: "center",
-    marginVertical: 16,
-  },
-  qrCode: {
-    width: 250,
-    height: 250,
-    marginBottom: 16,
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#eee",
   },
   infoText: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  noQrContainer: {
-    alignItems: "center",
-    padding: 20,
-  },
-  noQrText: {
-    fontSize: 16,
-    color: "#666",
+    marginTop: 16,
     textAlign: "center",
+    color: Colors.light.text,
+  },
+  emptyState: {
+    alignItems: "center",
+    padding: 24,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: Colors.light.icon,
     marginBottom: 16,
   },
-  refreshButton: {
-    marginTop: 8,
-  },
-  infoCard: {
-    backgroundColor: "white",
-    borderRadius: 8,
-    padding: 16,
-    marginTop: 8,
-    elevation: 2,
-  },
-  infoTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 12,
-  },
-  infoDescription: {
-    fontSize: 14,
-    marginBottom: 8,
-    color: "#444",
+  retryButton: {
+    backgroundColor: Colors.light.primary,
   },
 });
 
