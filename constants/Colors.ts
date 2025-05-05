@@ -23,6 +23,7 @@ export const Colors = {
     text: "#1A1A1A", // Almost black
     textSecondary: "#666666", // Dark gray
     textTertiary: "#999999", // Medium gray
+    icon: "#666666", // Same as textSecondary for backward compatibility
 
     // Border Colors
     border: "#E0E0E0", // Light gray

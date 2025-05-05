@@ -361,7 +361,7 @@ export default function Dashboard() {
                     <Ionicons
                       name="location-outline"
                       size={16}
-                      color={Colors.light.icon}
+                      color={Colors.light.textSecondary}
                     />
                     <Text style={styles.labLocation}>{lab.name}</Text>
                   </View>
@@ -373,7 +373,7 @@ export default function Dashboard() {
               <Ionicons
                 name="flask-outline"
                 size={48}
-                color={Colors.light.icon}
+                color={Colors.light.textSecondary}
               />
               <Text style={styles.emptyStateText}>
                 No labs scheduled for {selectedDay}
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
   },
   labEndTime: {
     fontSize: 16,
-    color: Colors.light.icon,
+    color: Colors.light.textSecondary,
   },
   labDetails: {
     flex: 1,
@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
   },
   labSubjectCode: {
     fontSize: 13,
-    color: Colors.light.icon,
+    color: Colors.light.textSecondary,
     marginBottom: 4,
   },
   labTitle: {
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
   },
   labLocation: {
     fontSize: 14,
-    color: Colors.light.icon,
+    color: Colors.light.textSecondary,
     marginLeft: 4,
   },
   emptyState: {
@@ -601,7 +601,7 @@ const styles = StyleSheet.create({
   },
   emptyStateSubtext: {
     fontSize: 14,
-    color: Colors.light.icon,
+    color: Colors.light.textSecondary,
     textAlign: "center",
     maxWidth: "80%",
   },

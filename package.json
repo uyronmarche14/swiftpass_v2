@@ -9,7 +9,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "jest --watchAll",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "web-build": "EXPO_WEB_SSR=false npx expo export --platform web",
+    "web-serve": "npx serve web-build"
   },
   "jest": {
     "preset": "jest-expo"
@@ -48,7 +50,8 @@
     "react-native-svg": "15.11.2",
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "~0.19.13",
-    "react-native-webview": "13.12.5"
+    "react-native-webview": "13.12.5",
+    "serve": "^14.2.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -61,5 +64,8 @@
     "react-test-renderer": "18.3.1",
     "typescript": "^5.3.3"
   },
-  "private": true
+  "private": true,
+  "web": {
+    "entryPoint": "./web-export-entry.js"
+  }
 }

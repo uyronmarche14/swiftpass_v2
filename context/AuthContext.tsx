@@ -174,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return true;
     } catch (error: unknown) {
       console.error("Login error:", error);
+
       if (error instanceof Error) {
         if (error.message.includes("Network request failed")) {
           Alert.alert(
@@ -264,7 +265,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           JSON.stringify(response.data.session)
         );
 
-        router.replace("/(tabs)");
+        router.replace("/login");
         return true;
       } else {
         // If Supabase registration fails with a specific error, show it

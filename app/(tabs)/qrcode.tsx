@@ -17,42 +17,58 @@ import QRCode from "react-native-qrcode-svg";
 import * as Haptics from "expo-haptics";
 
 export default function QRCodeScreen() {
-  const { userProfile, isLoading } = useAuth();
+  const { userProfile, isLoading, getQRCode } = useAuth();
   const [qrValue, setQrValue] = useState("");
   const [qrLoading, setQrLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Generate QR code data
-  const generateQRData = useCallback(() => {
-    if (!userProfile) return "";
+  // Load QR code from backend
+  const loadQRCode = useCallback(async () => {
+    if (!userProfile) return;
 
-    // Create a persistent QR code with user data
-    const qrData = {
-      userId: userProfile.id,
-      studentId: userProfile.student_id,
-      name: userProfile.full_name,
-      course: userProfile.course || "Not Specified",
-    };
-
-    return JSON.stringify(qrData);
-  }, [userProfile]);
+    try {
+      setQrLoading(true);
+      const qrData = await getQRCode();
+      if (qrData) {
+        setQrValue(qrData);
+      } else {
+        // Fallback to generating QR code if backend fails
+        const fallbackQrData = {
+          userId: userProfile.id,
+          studentId: userProfile.student_id,
+          name: userProfile.full_name,
+          course: userProfile.course || "Not Specified",
+        };
+        setQrValue(JSON.stringify(fallbackQrData));
+      }
+    } catch (error) {
+      console.error("Error loading QR code:", error);
+      // Fallback to client-side generation
+      const fallbackQrData = {
+        userId: userProfile.id,
+        studentId: userProfile.student_id,
+        name: userProfile.full_name,
+        course: userProfile.course || "Not Specified",
+      };
+      setQrValue(JSON.stringify(fallbackQrData));
+    } finally {
+      setQrLoading(false);
+    }
+  }, [userProfile, getQRCode]);
 
   // Set QR code on load
   useEffect(() => {
     if (userProfile) {
-      setQrLoading(true);
-      const qrData = generateQRData();
-      setQrValue(qrData);
-      setQrLoading(false);
+      loadQRCode();
     }
-  }, [userProfile, generateQRData]);
+  }, [userProfile, loadQRCode]);
 
   // Handle pull-to-refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // We're not generating a new QR code, just refreshing the view
+    await loadQRCode();
     setRefreshing(false);
-  }, []);
+  }, [loadQRCode]);
 
   // Request emergency access
   const requestEmergencyAccess = () => {
@@ -108,7 +124,7 @@ export default function QRCodeScreen() {
             <Ionicons
               name="information-circle-outline"
               size={18}
-              color={Colors.light.tint}
+              color={Colors.light.info}
             />
             <Text style={styles.infoText}>
               This QR code is permanently linked to your account
@@ -200,7 +216,7 @@ const styles = StyleSheet.create({
   infoNote: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: `${Colors.light.tint}10`,
+    backgroundColor: `${Colors.light.info}10`,
     padding: 10,
     borderRadius: 8,
     marginBottom: 20,
@@ -208,7 +224,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: 14,
-    color: Colors.light.tint,
+    color: Colors.light.info,
     marginLeft: 8,
   },
   qrCodeWrapper: {
@@ -249,13 +265,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   emergencyButton: {
-    backgroundColor: Colors.light.danger,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
+    padding: 12,
     borderRadius: 12,
-    gap: 8,
+    backgroundColor: Colors.light.error,
+    marginBottom: 16,
   },
   emergencyButtonText: {
     color: "#fff",
