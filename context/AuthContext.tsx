@@ -18,6 +18,29 @@ interface AdminProfile {
   updated_at: string;
 }
 
+// Define types for better clarity
+interface Subject {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface Lab {
+  id: string;
+  name: string;
+  section: string | null;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  subject_id: string;
+  subjects: Subject | Subject[] | null; // Adjust based on actual Supabase return type
+}
+
+interface EnrolledLabInfo {
+  labId: string;
+  lab: Lab | null;
+}
+
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -283,6 +306,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   filteredLabs.forEach((lab) => {
                     if (!lab.day_of_week) return;
 
+                    // Safely access subject data, assuming it might be an array
+                    const subject = Array.isArray(lab.subjects)
+                      ? lab.subjects[0]
+                      : lab.subjects;
+
                     const day = lab.day_of_week;
                     if (!labSchedule[day]) {
                       labSchedule[day] = [];
@@ -293,8 +321,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       section: lab.section,
                       start_time: lab.start_time,
                       end_time: lab.end_time,
-                      subject: lab.subjects?.name || "",
-                      subject_code: lab.subjects?.code || "",
+                      subject: subject?.name || "",
+                      subject_code: subject?.code || "",
                     });
                   });
 
@@ -317,8 +345,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               // Skip null/undefined labs
               if (!lab) return;
 
-              // Get subject information from the joined data
-              const subject = lab.subjects;
+              // Safely access subject data, assuming it might be an array
+              const subject = Array.isArray(lab.subjects)
+                ? lab.subjects[0]
+                : lab.subjects;
               if (!subject) return;
 
               // Check if student's course and section match the lab's subject and section
@@ -833,10 +863,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         "Saturday",
       ][now.getDay()];
 
-      // Get current lab information
-      let currentLab = null;
-      if (userProfile?.course && userProfile?.section) {
-        // Find labs that match this student's course and section for today
+      // Get current lab information and enrollments
+      let currentLab: EnrolledLabInfo | null = null;
+      let enrolledLabs: EnrolledLabInfo[] = [];
+
+      // First get student's lab enrollments
+      const { data: enrollments, error: enrollmentError } = await supabase
+        .from("student_labs")
+        .select(
+          `
+          lab_id,
+          labs!student_labs_lab_id_fkey (
+            id, name, section, day_of_week, start_time, end_time,
+            subjects:subject_id (
+              id, name, code
+            )
+          )
+        `
+        )
+        .eq("student_id", user.id);
+
+      if (!enrollmentError && enrollments && enrollments.length > 0) {
+        // Store all labs the student is enrolled in
+        enrolledLabs = enrollments
+          .map((enrollment: any): EnrolledLabInfo | null => {
+            // Assuming `enrollment.labs` might be null or even an array based on previous errors
+            const labData = Array.isArray(enrollment.labs)
+              ? enrollment.labs[0]
+              : enrollment.labs;
+            return labData
+              ? { labId: enrollment.lab_id, lab: labData as Lab }
+              : null;
+          })
+          .filter(
+            (item): item is EnrolledLabInfo =>
+              item !== null && item.lab !== null
+          );
+
+        // Find if there's a current lab session today
+        const todayLabs = enrolledLabs.filter(
+          (item) => item.lab?.day_of_week === dayOfWeek
+        );
+
+        if (todayLabs.length > 0) {
+          // Find if any of today's labs are happening right now
+          const currentLabs = todayLabs.filter((item) => {
+            if (!item.lab) return false;
+            const labStartTime = item.lab.start_time;
+            const labEndTime = item.lab.end_time;
+            return currentTime >= labStartTime && currentTime <= labEndTime;
+          });
+
+          if (currentLabs.length > 0) {
+            currentLab = currentLabs[0];
+          }
+        }
+      } else if (userProfile?.course && userProfile?.section) {
+        // Fallback: If no enrollments found, try to find labs that match this student's course and section for today
         const { data: subjectData, error: subjectError } = await supabase
           .from("subjects")
           .select("id")
@@ -870,7 +953,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
 
               if (currentLabs.length > 0) {
-                currentLab = currentLabs[0];
+                currentLab = {
+                  labId: currentLabs[0].id,
+                  lab: currentLabs[0],
+                };
               }
             }
           } else if (labData && labData.length > 0) {
@@ -882,7 +968,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
 
             if (currentLabs.length > 0) {
-              currentLab = currentLabs[0];
+              currentLab = {
+                labId: currentLabs[0].id,
+                lab: currentLabs[0],
+              };
             }
           }
         }
@@ -909,7 +998,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (success) {
             // Try to get the newly created QR code
-            const { data: newQrData, error: newQrError } = await supabase
+            const { data: newQrRecord, error: newQrError } = await supabase
               .from("qr_codes")
               .select("qr_data")
               .eq("student_id", user.id)
@@ -920,30 +1009,95 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
 
             // Update with current time and lab info
-            const updatedQrData = {
-              ...newQrData.qr_data,
+            const updatedQrDataBase = {
               timestamp: now.toISOString(),
               currentDay: dayOfWeek,
               currentTime: currentTime,
-              currentLab: currentLab
+              studentId: user.id,
+              labId: currentLab ? currentLab.labId : null,
+              currentLab: currentLab?.lab
                 ? {
-                    name: currentLab.name,
-                    time: `${currentLab.start_time} - ${currentLab.end_time}`,
-                    day: currentLab.day_of_week,
+                    id: currentLab.labId,
+                    name: currentLab.lab.name,
+                    time: `${currentLab.lab.start_time} - ${currentLab.lab.end_time}`,
+                    day: currentLab.lab.day_of_week,
                   }
                 : null,
+              enrolledLabs: enrolledLabs.map((item) => ({
+                id: item.labId,
+                name: item.lab?.name || "Unknown Lab",
+                day: item.lab?.day_of_week || "Unknown Day",
+                time: item.lab
+                  ? `${item.lab.start_time} - ${item.lab.end_time}`
+                  : "Unknown Time",
+              })),
             };
 
-            // Update the QR code with the current time information
-            await supabase
-              .from("qr_codes")
-              .update({
-                qr_data: updatedQrData,
-                updated_at: now.toISOString(),
-              })
-              .eq("student_id", user.id);
+            let finalQrData: any = {};
 
-            return JSON.stringify(updatedQrData);
+            if (qrError) {
+              // Handle creation of new QR code
+              if (qrError.code === "PGRST116" && userProfile) {
+                const success = await createUserQRCode(
+                  user.id,
+                  userProfile.full_name,
+                  userProfile.student_id,
+                  userProfile.course,
+                  userProfile.section
+                );
+                if (success) {
+                  const { data: newQrData, error: newQrError } = await supabase
+                    .from("qr_codes")
+                    .select("qr_data")
+                    .eq("student_id", user.id)
+                    .single();
+                  if (newQrError)
+                    throw new Error("Failed to retrieve newly created QR code");
+
+                  // Safely access qr_data from the fetched record
+                  const baseData =
+                    newQrData &&
+                    typeof newQrData.qr_data === "object" &&
+                    newQrData.qr_data !== null
+                      ? newQrData.qr_data
+                      : {};
+                  finalQrData = { ...baseData, ...updatedQrDataBase };
+
+                  await supabase
+                    .from("qr_codes")
+                    .update({
+                      qr_data: finalQrData,
+                      updated_at: now.toISOString(),
+                    })
+                    .eq("student_id", user.id);
+                } else {
+                  throw new Error("Failed to create QR code");
+                }
+              } else {
+                throw new Error("Error retrieving QR code: " + qrError.message);
+              }
+            } else {
+              // Update existing QR code data
+              // Safely access qr_data from the existing record
+              const baseData =
+                qrCodeData &&
+                typeof qrCodeData.qr_data === "object" &&
+                qrCodeData.qr_data !== null
+                  ? qrCodeData.qr_data
+                  : {};
+              finalQrData = { ...baseData, ...updatedQrDataBase };
+
+              await supabase
+                .from("qr_codes")
+                .update({
+                  qr_data: finalQrData,
+                  updated_at: now.toISOString(),
+                })
+                .eq("student_id", user.id);
+            }
+
+            // Return the user's updated QR code data
+            return JSON.stringify(finalQrData);
           } else {
             throw new Error("Failed to create QR code");
           }
@@ -953,34 +1107,115 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Update the existing QR code with current time and lab info
-      const existingData = qrCodeData.qr_data;
-      const updatedQrData = {
-        ...existingData,
+      const updatedQrDataBase = {
         timestamp: now.toISOString(),
         currentDay: dayOfWeek,
         currentTime: currentTime,
-        currentLab: currentLab
+        studentId: user.id,
+        labId: currentLab ? currentLab.labId : null,
+        currentLab: currentLab?.lab
           ? {
-              name: currentLab.name,
-              time: `${currentLab.start_time} - ${currentLab.end_time}`,
-              day: currentLab.day_of_week,
+              id: currentLab.labId,
+              name: currentLab.lab.name,
+              time: `${currentLab.lab.start_time} - ${currentLab.lab.end_time}`,
+              day: currentLab.lab.day_of_week,
             }
           : null,
+        enrolledLabs: enrolledLabs.map((item) => ({
+          id: item.labId,
+          name: item.lab?.name || "Unknown Lab",
+          day: item.lab?.day_of_week || "Unknown Day",
+          time: item.lab
+            ? `${item.lab.start_time} - ${item.lab.end_time}`
+            : "Unknown Time",
+        })),
       };
 
-      // Update the QR code with the current time information
-      await supabase
-        .from("qr_codes")
-        .update({
-          qr_data: updatedQrData,
-          updated_at: now.toISOString(),
-        })
-        .eq("student_id", user.id);
+      let finalQrData: any = {};
+
+      if (qrError) {
+        // Handle creation of new QR code
+        if (qrError.code === "PGRST116" && userProfile) {
+          const success = await createUserQRCode(
+            user.id,
+            userProfile.full_name,
+            userProfile.student_id,
+            userProfile.course,
+            userProfile.section
+          );
+          if (success) {
+            // Refetch the QR code data after creation
+            const { data: newQrRecord, error: newQrError } = await supabase
+              .from("qr_codes")
+              .select("qr_data")
+              .eq("student_id", user.id)
+              .single();
+
+            if (newQrError)
+              throw new Error("Failed to retrieve newly created QR code");
+
+            // Safely access qr_data from the fetched record
+            const baseData =
+              newQrRecord &&
+              typeof newQrRecord.qr_data === "object" &&
+              newQrRecord.qr_data !== null
+                ? newQrRecord.qr_data
+                : {};
+            finalQrData = { ...baseData, ...updatedQrDataBase };
+
+            await supabase
+              .from("qr_codes")
+              .update({
+                qr_data: finalQrData,
+                updated_at: now.toISOString(),
+              })
+              .eq("student_id", user.id);
+          } else {
+            throw new Error("Failed to create QR code");
+          }
+        } else {
+          throw new Error("Error retrieving QR code: " + qrError.message);
+        }
+      } else {
+        // Update existing QR code data
+        // Safely access qr_data from the existing record
+        const baseData =
+          qrCodeData &&
+          typeof qrCodeData.qr_data === "object" &&
+          qrCodeData.qr_data !== null
+            ? qrCodeData.qr_data
+            : {};
+        finalQrData = { ...baseData, ...updatedQrDataBase };
+
+        await supabase
+          .from("qr_codes")
+          .update({
+            qr_data: finalQrData,
+            updated_at: now.toISOString(),
+          })
+          .eq("student_id", user.id);
+      }
 
       // Return the user's updated QR code data
-      return JSON.stringify(updatedQrData);
+      return JSON.stringify(finalQrData);
     } catch (error: unknown) {
       console.error("QR code error:", error);
+
+      // Type guard for Supabase errors or generic errors
+      let errorMessage = "An unexpected QR code error occurred";
+      if (error && typeof error === "object") {
+        if ("message" in error) {
+          errorMessage = String(error.message);
+        }
+        if ("code" in error && error.code === "PGRST116") {
+          // Handle specific Supabase error if needed, otherwise log generic message
+          console.warn(
+            "Supabase specific error PGRST116 occurred, but handled in logic above."
+          );
+        }
+      }
+
+      console.error(`QR Code Fetch/Update Failed: ${errorMessage}`);
 
       // Only log to console, don't show alert to user
       // Generate fallback QR code for the user if possible
@@ -1008,6 +1243,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           currentDay: dayOfWeek,
           currentTime: currentTime,
           generated: "fallback",
+          // Ensure fallback doesn't rely on potentially null currentLab
+          labId: null,
+          currentLab: null,
+          enrolledLabs: [],
         };
         return JSON.stringify(fallbackQrData);
       }

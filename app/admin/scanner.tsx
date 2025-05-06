@@ -1,108 +1,105 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
-  StyleSheet,
-  Text,
   View,
+  Text,
+  Button,
+  StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
   Alert,
-  SafeAreaView,
 } from "react-native";
-import { Stack, router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { Colors } from "../../constants/Colors";
+import { CameraView, useCameraPermissions } from "expo-camera";
 
 const QRScanner = () => {
-  const [isLoading, setIsLoading] = useState(false);
+  const [facing, getFacing] = useState("back");
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanned, setScanned] = useState(false);
+
+  if (!permission) return <View />;
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.message}>
+          We need your permission to access the camera
+        </Text>
+        <Button title="Grant Permission" onPress={requestPermission} />
+      </View>
+    );
+  }
+
+  const handleScan = ({ data, type }) => {
+    if (!scanned) {
+      setScanned(true);
+      Alert.alert("Scanned Data", `${data}`);
+      setTimeout(() => setScanned(false), 3000);
+    }
+  };
+  const toggleCameraFacing = () => {
+    getFacing((prev: string) => (prev === "back" ? "front" : "back"));
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: "QR Scanner",
-          headerRight: () => (
-            <TouchableOpacity onPress={() => router.back()}>
-              <Ionicons name="close" size={24} color={Colors.light.text} />
-            </TouchableOpacity>
-          ),
+    <View style={styles.container}>
+      <CameraView
+        style={styles.camera}
+        facing={facing as "front" | "back"}
+        barcodeScannerSettings={{
+          barcodeTypes: [
+            "qr",
+            "ean13",
+            "ean8",
+            "upc_a",
+            "upc_e",
+            "code39",
+            "code128",
+          ],
         }}
-      />
-      <View style={styles.container}>
-        {isLoading && (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={Colors.light.primary} />
-            <Text style={styles.loadingText}>Processing...</Text>
-          </View>
-        )}
-
-        <View style={styles.messageContainer}>
-          <Ionicons name="qr-code" size={80} color={Colors.light.primary} />
-          <Text style={styles.title}>QR Scanner</Text>
-          <Text style={styles.message}>
-            This is the QR scanner screen. We'll set up the camera in the next
-            step.
-          </Text>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() =>
-              Alert.alert("Scanner", "Scanner would activate here.")
-            }
-          >
-            <Text style={styles.buttonText}>Simulate Scan</Text>
+        onBarcodeScanned={handleScan}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.scanArea} />
+        </View>
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity style={styles.button} onPress={toggleCameraFacing}>
+            <Text style={styles.buttonText}>Flip Camera</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </SafeAreaView>
+      </CameraView>
+    </View>
   );
 };
 
-export default QRScanner;
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.light.backgroundAlt,
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 999,
-  },
-  loadingText: {
-    color: "#fff",
-    marginTop: 12,
-    fontSize: 16,
-  },
-  messageContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginTop: 20,
-    marginBottom: 10,
-    color: Colors.light.text,
-  },
-  message: {
-    fontSize: 16,
-    textAlign: "center",
-    marginBottom: 30,
-    color: Colors.light.textSecondary,
+  container: { flex: 1 },
+  message: { textAlign: "center", marginTop: 20 },
+  camera: { flex: 1 },
+  buttonContainer: {
+    position: "absolute",
+    bottom: 30,
+    alignSelf: "center",
   },
   button: {
-    backgroundColor: Colors.light.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    backgroundColor: "black",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     borderRadius: 8,
   },
   buttonText: {
-    color: "#fff",
+    color: "white",
     fontSize: 16,
-    fontWeight: "600",
+  },
+  overlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scanArea: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: "white",
+    borderRadius: 10,
   },
 });
+
+export default QRScanner;

@@ -23,9 +23,7 @@
       "favicon": "./assets/images/favicon.png",
       "build": {
         "babel": {
-          "include": [
-            "@supabase/auth-js"
-          ]
+          "include": ["@supabase/auth-js"]
         }
       }
     },
