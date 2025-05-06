@@ -36,6 +36,18 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen
+          name="admin"
+          options={{
+            animation: "fade",
+          }}
+        />
+        <Stack.Screen
+          name="admin-login"
+          options={{
+            animation: "fade",
+          }}
+        />
+        <Stack.Screen
           name="screening"
           options={{
             animation: "slide_from_right",

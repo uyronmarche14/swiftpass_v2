@@ -56,6 +56,13 @@ export default function AdminLayout() {
           title: "Manage Schedules",
         }}
       />
+      <Stack.Screen
+        name="scanner"
+        options={{
+          title: "QR Scanner",
+          presentation: "modal",
+        }}
+      />
     </Stack>
   );
 }

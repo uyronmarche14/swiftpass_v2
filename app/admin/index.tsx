@@ -107,7 +107,7 @@ export default function AdminDashboard() {
       <View style={styles.actionsContainer}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => router.push("/admin/students")}
+          onPress={() => router.push("/admin/students" as any)}
         >
           <Ionicons name="people" size={24} color="#fff" />
           <Text style={styles.actionButtonText}>Manage Students</Text>
@@ -115,7 +115,7 @@ export default function AdminDashboard() {
 
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => router.push("/admin/labs")}
+          onPress={() => router.push("/admin/labs" as any)}
         >
           <Ionicons name="calendar" size={24} color="#fff" />
           <Text style={styles.actionButtonText}>Manage Labs</Text>
@@ -123,10 +123,18 @@ export default function AdminDashboard() {
 
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => router.push("/admin/schedules")}
+          onPress={() => router.push("/admin/schedules" as any)}
         >
           <Ionicons name="time" size={24} color="#fff" />
           <Text style={styles.actionButtonText}>Manage Schedules</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: "#28a745" }]}
+          onPress={() => router.push("/admin/scanner" as any)}
+        >
+          <Ionicons name="qr-code" size={24} color="#fff" />
+          <Text style={styles.actionButtonText}>QR Scanner</Text>
         </TouchableOpacity>
       </View>
 
@@ -149,7 +157,7 @@ export default function AdminDashboard() {
               style={styles.viewButton}
               onPress={() =>
                 router.push({
-                  pathname: "/admin/students",
+                  pathname: "/admin/students" as any,
                   params: { id: student.id },
                 })
               }
@@ -170,7 +178,7 @@ export default function AdminDashboard() {
         {students.length > 5 && (
           <TouchableOpacity
             style={styles.viewAllButton}
-            onPress={() => router.push("/admin/students")}
+            onPress={() => router.push("/admin/students" as any)}
           >
             <Text style={styles.viewAllText}>View all students</Text>
             <Ionicons

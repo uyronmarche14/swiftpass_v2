@@ -23,7 +23,9 @@
       "favicon": "./assets/images/favicon.png",
       "build": {
         "babel": {
-          "include": ["@supabase/auth-js"]
+          "include": [
+            "@supabase/auth-js"
+          ]
         }
       }
     },
@@ -37,7 +39,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-barcode-scanner"
     ],
     "experiments": {
       "typedRoutes": true,

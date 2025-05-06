@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../constants/Colors";
 import { supabase } from "../../lib/supabase";
 import DropDownPicker from "react-native-dropdown-picker";
+import { router } from "expo-router";
 
 // Hardcoded section options
 const sectionOptions = [
@@ -174,6 +175,13 @@ export default function LabsScreen() {
     setSelectedSubject(null);
   };
 
+  const openQRScanner = (labId: string) => {
+    router.push({
+      pathname: "/admin/scanner",
+      params: { labId },
+    });
+  };
+
   if (isLoading || isLoadingData) {
     return (
       <View style={styles.loadingContainer}>
@@ -228,16 +236,24 @@ export default function LabsScreen() {
                     {item.subjects?.code && `(${item.subjects.code})`}
                   </Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => removeLab(item.id)}
-                >
-                  <Ionicons
-                    name="trash-outline"
-                    size={20}
-                    color={Colors.light.error}
-                  />
-                </TouchableOpacity>
+                <View style={styles.labActions}>
+                  <TouchableOpacity
+                    style={styles.scanButton}
+                    onPress={() => openQRScanner(item.id)}
+                  >
+                    <Ionicons name="qr-code-outline" size={20} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => removeLab(item.id)}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={20}
+                      color={Colors.light.error}
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.labDetails}>
@@ -620,5 +636,26 @@ const styles = StyleSheet.create({
   disabledButton: {
     backgroundColor: Colors.light.primaryLight,
     opacity: 0.7,
+  },
+  labActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  scanButton: {
+    backgroundColor: Colors.light.success,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  editButton: {
+    backgroundColor: Colors.light.primary,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
