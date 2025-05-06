@@ -100,6 +100,36 @@ export default function Dashboard() {
       console.log("Student course:", studentCourse);
       console.log("Student section:", studentSection);
 
+      // First check if we can find matching subjects
+      const { data: subjects, error: subjectsError } = await supabase
+        .from("subjects")
+        .select("*");
+
+      if (subjectsError) {
+        console.error("Error fetching subjects:", subjectsError);
+      } else if (studentCourse && subjects) {
+        // Look for matching subjects based on name or code
+        const matchingSubjects = subjects.filter(
+          (subject) =>
+            subject.name.toUpperCase().includes(studentCourse.toUpperCase()) ||
+            (subject.code &&
+              studentCourse
+                .toUpperCase()
+                .includes(subject.code.toUpperCase())) ||
+            (subject.code &&
+              subject.code.toUpperCase().includes(studentCourse.toUpperCase()))
+        );
+
+        if (matchingSubjects.length === 0) {
+          console.warn(`No subjects found matching course: ${studentCourse}`);
+        } else {
+          console.log(
+            `Found ${matchingSubjects.length} matching subjects:`,
+            matchingSubjects.map((s) => `${s.code}: ${s.name}`)
+          );
+        }
+      }
+
       // First get all labs with subject information using proper foreign key relationship
       const { data: allLabsData, error: allLabsError } = await supabase.from(
         "labs"
@@ -149,29 +179,82 @@ export default function Dashboard() {
 
       console.log(`Formatted ${formattedLabs.length} labs`);
 
-      // Filter labs based on course and section
+      // Filter labs based on course and section with better comparison logic
       let filteredLabs = formattedLabs;
 
-      // Filter by course if specified
+      // Filter by course if specified - using multiple match strategies
       if (studentCourse) {
-        // Check if subject name contains the student's course name
-        filteredLabs = filteredLabs.filter((lab) =>
-          lab.subject_name.includes(studentCourse)
+        const formattedCourse = studentCourse.trim().toUpperCase();
+        // Create a temporary array to hold matches
+        let courseMatches = [];
+
+        // Strategy 1: Check if subject name contains the course name
+        const nameMatches = formattedLabs.filter((lab) =>
+          lab.subject_name.toUpperCase().includes(formattedCourse)
         );
-        console.log(`After course filter: ${filteredLabs.length} labs`);
+
+        // Strategy 2: Check if course contains subject code
+        const codeMatches = formattedLabs.filter(
+          (lab) =>
+            lab.subject_code &&
+            (formattedCourse.includes(lab.subject_code.toUpperCase()) ||
+              lab.subject_code.toUpperCase().includes(formattedCourse))
+        );
+
+        // Combine unique labs from both strategies
+        courseMatches = [...new Set([...nameMatches, ...codeMatches])];
+
+        console.log(
+          `Found ${nameMatches.length} name matches and ${codeMatches.length} code matches`
+        );
+
+        if (courseMatches.length > 0) {
+          filteredLabs = courseMatches;
+          console.log(`After course filter: ${filteredLabs.length} labs`);
+        } else {
+          console.warn(`No labs match course: ${studentCourse}`);
+        }
       }
 
       // Filter by section if specified
-      if (studentSection) {
-        filteredLabs = filteredLabs.filter(
+      if (studentSection && filteredLabs.length > 0) {
+        // First try exact section match
+        const exactSectionMatch = filteredLabs.filter(
           (lab) => lab.section === studentSection
         );
+
+        // If we found exact matches, use them, otherwise keep all matches from the course filter
+        if (exactSectionMatch.length > 0) {
+          filteredLabs = exactSectionMatch;
+          console.log(
+            `Found ${exactSectionMatch.length} labs with exact section match: ${studentSection}`
+          );
+        } else {
+          console.log(
+            `No labs with exact section: ${studentSection}, showing all course labs`
+          );
+        }
         console.log(`After section filter: ${filteredLabs.length} labs`);
       }
 
-      // If no labs are found after filtering, show all labs
-      if (filteredLabs.length === 0 && formattedLabs.length > 0) {
-        console.log("No labs found after filtering, showing all labs instead");
+      // If no labs are found after filtering by course and we have a course specified,
+      // this means we couldn't find any subjects for this course
+      if (
+        filteredLabs.length === 0 &&
+        studentCourse &&
+        formattedLabs.length > 0
+      ) {
+        console.log(`No labs found for course: ${studentCourse}`);
+        setModalConfig({
+          title: "Lab Schedule Information",
+          message: `We couldn't find any labs specifically for ${studentCourse}${
+            studentSection ? `, Section ${studentSection}` : ""
+          }. Showing all available labs instead.`,
+          type: "info",
+        });
+        setModalVisible(true);
+
+        // Show all labs instead
         filteredLabs = formattedLabs;
       }
 
@@ -282,7 +365,23 @@ export default function Dashboard() {
       if (subjectsError) {
         console.error("Error fetching subjects:", subjectsError);
       } else {
-        console.log(`Found ${subjects.length} subjects:`, subjects);
+        console.log(`Found ${subjects?.length || 0} subjects:`, subjects);
+      }
+
+      // Check if any subjects match the student's course
+      if (userProfile?.course && subjects && subjects.length > 0) {
+        const studentCourse = userProfile.course; // Store in local variable to fix type issue
+        const matchingSubjects = subjects.filter(
+          (subject) =>
+            subject.name.toUpperCase().includes(studentCourse.toUpperCase()) ||
+            (subject.code &&
+              studentCourse.toUpperCase().includes(subject.code.toUpperCase()))
+        );
+
+        console.log(
+          `Found ${matchingSubjects.length} subjects matching course "${studentCourse}":`,
+          matchingSubjects.map((s) => `${s.code}: ${s.name}`)
+        );
       }
 
       // Check all labs without filtering
@@ -293,7 +392,10 @@ export default function Dashboard() {
       if (labsError) {
         console.error("Error fetching all labs:", labsError);
       } else {
-        console.log(`Found ${allLabs.length} total labs in database:`, allLabs);
+        console.log(
+          `Found ${allLabs?.length || 0} total labs in database:`,
+          allLabs
+        );
       }
 
       // Check student labs assignments

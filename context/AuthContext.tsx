@@ -197,55 +197,182 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Process lab schedules by day
           const labSchedule: Record<string, any[]> = {};
 
-          // Process each enrollment
-          enrollments.forEach((enrollment: any) => {
-            // Get the lab from the enrollment
-            const lab = enrollment.labs;
+          // Debug log information about enrollments
+          console.log(
+            `Found ${enrollments.length} lab enrollments for user ${userId}`
+          );
 
-            // Skip null/undefined labs
-            if (!lab) return;
+          // If no specific enrollments found, let's fetch all labs that match the course and section
+          if (enrollments.length === 0 && response.data?.course) {
+            console.log(
+              "No explicit lab enrollments, fetching labs by course and section"
+            );
 
-            // Get subject information from the joined data
-            const subject = lab.subjects;
-            if (!subject) return;
+            // First, find matching subjects for the course
+            const { data: subjects } = await supabase
+              .from("subjects")
+              .select("id, name, code");
 
-            // Check if student's course and section match the lab's subject and section
-            const studentCourse = response.data?.course || "";
-            const studentSection = response.data?.section || "";
-            const labSubject = subject.name || "";
-            const labSection = lab.section || "";
+            if (subjects && subjects.length > 0) {
+              const studentCourse = response.data.course;
+              const studentSection = response.data.section || "";
 
-            // Skip labs that don't match the student's course (if the student has a course)
-            // Only show labs where:
-            // 1. Student has no course OR the lab subject matches student's course
-            // 2. Student has no section OR the lab section matches student's section
-            const courseMatches =
-              !studentCourse || labSubject.includes(studentCourse);
-            const sectionMatches =
-              !studentSection || labSection === studentSection;
+              // Find subjects that match the course
+              const matchingSubjects = subjects.filter((subject: any) => {
+                if (!subject || typeof subject !== "object") return false;
 
-            if (!courseMatches || !sectionMatches) {
-              return; // Skip this lab
+                const subjectName = subject.name || "";
+                const subjectCode = subject.code || "";
+
+                return (
+                  subjectName
+                    .toUpperCase()
+                    .includes(studentCourse.toUpperCase()) ||
+                  (subjectCode &&
+                    studentCourse
+                      .toUpperCase()
+                      .includes(subjectCode.toUpperCase())) ||
+                  (subjectCode &&
+                    subjectCode
+                      .toUpperCase()
+                      .includes(studentCourse.toUpperCase()))
+                );
+              });
+
+              console.log(
+                `Found ${matchingSubjects.length} matching subjects for course: ${studentCourse}`
+              );
+
+              if (matchingSubjects.length > 0) {
+                const subjectIds = matchingSubjects.map((s) => s.id);
+
+                // Find all labs for these subjects
+                const { data: matchingLabs } = await supabase
+                  .from("labs")
+                  .select(
+                    `
+                    id, name, section, day_of_week, start_time, end_time,
+                    subjects:subject_id (
+                      id, name, code
+                    )
+                  `
+                  )
+                  .in("subject_id", subjectIds);
+
+                if (matchingLabs && matchingLabs.length > 0) {
+                  console.log(
+                    `Found ${matchingLabs.length} labs for matching subjects`
+                  );
+
+                  // Filter labs by section if specified
+                  let filteredLabs = matchingLabs;
+                  if (studentSection) {
+                    const exactSectionMatch = matchingLabs.filter(
+                      (lab) => lab.section === studentSection
+                    );
+
+                    if (exactSectionMatch.length > 0) {
+                      filteredLabs = exactSectionMatch;
+                      console.log(
+                        `Found ${exactSectionMatch.length} labs with exact section match: ${studentSection}`
+                      );
+                    }
+                  }
+
+                  // Process labs into schedule
+                  filteredLabs.forEach((lab) => {
+                    if (!lab.day_of_week) return;
+
+                    const day = lab.day_of_week;
+                    if (!labSchedule[day]) {
+                      labSchedule[day] = [];
+                    }
+
+                    labSchedule[day].push({
+                      name: lab.name,
+                      section: lab.section,
+                      start_time: lab.start_time,
+                      end_time: lab.end_time,
+                      subject: lab.subjects?.name || "",
+                      subject_code: lab.subjects?.code || "",
+                    });
+                  });
+
+                  console.log(
+                    `Processed lab schedule for ${
+                      Object.keys(labSchedule).length
+                    } days`
+                  );
+                } else {
+                  console.log("No matching labs found for subjects");
+                }
+              }
             }
+          } else {
+            // Process each enrollment
+            enrollments.forEach((enrollment: any) => {
+              // Get the lab from the enrollment
+              const lab = enrollment.labs;
 
-            const day = lab.day_of_week;
-            if (!labSchedule[day]) {
-              labSchedule[day] = [];
-            }
+              // Skip null/undefined labs
+              if (!lab) return;
 
-            labSchedule[day].push({
-              name: lab.name,
-              section: lab.section,
-              start_time: lab.start_time,
-              end_time: lab.end_time,
-              subject: subject.name || "",
-              subject_code: subject.code || "",
+              // Get subject information from the joined data
+              const subject = lab.subjects;
+              if (!subject) return;
+
+              // Check if student's course and section match the lab's subject and section
+              const studentCourse = response.data?.course || "";
+              const studentSection = response.data?.section || "";
+              const labSubject = subject.name || "";
+              const labSection = lab.section || "";
+
+              // Improved course matching logic
+              const courseMatches =
+                !studentCourse ||
+                labSubject
+                  .toUpperCase()
+                  .includes(studentCourse.toUpperCase()) ||
+                (subject.code &&
+                  studentCourse
+                    .toUpperCase()
+                    .includes(subject.code.toUpperCase())) ||
+                (subject.code &&
+                  subject.code
+                    .toUpperCase()
+                    .includes(studentCourse.toUpperCase()));
+
+              // Section matching - either no section specified, or sections match
+              const sectionMatches =
+                !studentSection || labSection === studentSection;
+
+              if (!courseMatches || !sectionMatches) {
+                return; // Skip this lab
+              }
+
+              const day = lab.day_of_week;
+              if (!labSchedule[day]) {
+                labSchedule[day] = [];
+              }
+
+              labSchedule[day].push({
+                name: lab.name,
+                section: lab.section,
+                start_time: lab.start_time,
+                end_time: lab.end_time,
+                subject: subject.name || "",
+                subject_code: subject.code || "",
+              });
             });
-          });
+          }
 
           // Add lab schedule to user profile
           if (response.data) {
             response.data.lab_schedule = labSchedule;
+            console.log(
+              "Final lab schedule added to user profile:",
+              Object.keys(labSchedule)
+            );
           }
         }
 
@@ -430,12 +557,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     studentId: string,
     course?: string,
     section?: string
-  ) => {
+  ): Promise<boolean> => {
     try {
-      // Get current date and time
+      console.log("Creating QR code for user:", userId);
+      console.log(`Course: ${course}, Section: ${section}`);
+
+      // Get current time information
       const now = new Date();
-      const currentTime = now.toTimeString().split(" ")[0]; // HH:MM:SS format
-      const currentDate = now.toISOString().split("T")[0]; // YYYY-MM-DD format
+      const currentTime = now.toTimeString().split(" ")[0];
       const dayOfWeek = [
         "Sunday",
         "Monday",
@@ -446,25 +575,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         "Saturday",
       ][now.getDay()];
 
-      // Get current lab information based on student course, section, and current time
+      // Get current lab information if the student has course and section
       let currentLab = null;
       if (course && section) {
         // Find labs that match this student's course and section for today
-        const { data: subjectData } = await supabase
+        const { data: subjectData, error: subjectError } = await supabase
           .from("subjects")
           .select("id")
-          .ilike("name", `%${course}%`)
-          .single();
+          .ilike("name", `%${course}%`);
 
-        if (subjectData) {
+        if (!subjectError && subjectData && subjectData.length > 0) {
+          const subjectIds = subjectData.map((subject) => subject.id);
+
+          // Try with exact section match first
           const { data: labData } = await supabase
             .from("labs")
             .select("*")
-            .eq("subject_id", subjectData.id)
+            .in("subject_id", subjectIds)
             .eq("section", section)
             .eq("day_of_week", dayOfWeek);
 
-          if (labData && labData.length > 0) {
+          // If no labs with exact section, try without section filter
+          if (!labData || labData.length === 0) {
+            const { data: allLabData } = await supabase
+              .from("labs")
+              .select("*")
+              .in("subject_id", subjectIds)
+              .eq("day_of_week", dayOfWeek);
+
+            if (allLabData && allLabData.length > 0) {
+              // Find if there's a lab right now
+              const currentLabs = allLabData.filter((lab) => {
+                const labStartTime = lab.start_time;
+                const labEndTime = lab.end_time;
+                return currentTime >= labStartTime && currentTime <= labEndTime;
+              });
+
+              if (currentLabs.length > 0) {
+                currentLab = currentLabs[0];
+              }
+            }
+          } else if (labData && labData.length > 0) {
             // Find if there's a lab right now
             const currentLabs = labData.filter((lab) => {
               const labStartTime = lab.start_time;
@@ -542,13 +693,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     section?: string
   ) => {
     try {
-      if (!course || !section) {
-        console.log("Skipping auto lab assignment - missing course or section");
+      if (!course) {
+        console.log("Skipping auto lab assignment - missing course");
         return false;
       }
 
       console.log(`Auto-assigning labs for student: ${studentId}`);
-      console.log(`Course: ${course}, Section: ${section}`);
+      console.log(`Course: ${course}, Section: ${section || "Not specified"}`);
 
       // First check if student already has lab assignments
       const { data: existingAssignments, error: assignmentsError } =
@@ -573,7 +724,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
 
-      // Find subject ID for the student's course
+      // Find subject IDs for the student's course
       const { data: subjectData, error: subjectError } = await supabase
         .from("subjects")
         .select("id")
@@ -590,23 +741,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const subjectIds = subjectData.map((subject) => subject.id);
       console.log(`Found ${subjectIds.length} matching subjects`);
 
-      // Find all labs matching the subject and section
-      const { data: matchingLabs, error: labsError } = await supabase
-        .from("labs")
-        .select("id")
-        .in("subject_id", subjectIds)
-        .eq("section", section);
+      let matchingLabs;
 
-      if (labsError) {
-        console.error("Error finding matching labs:", labsError);
-        return false;
+      // If section is provided, try with exact section match first
+      if (section) {
+        // Find all labs matching the subject and exact section
+        const { data: sectionLabs, error: labsError } = await supabase
+          .from("labs")
+          .select("id")
+          .in("subject_id", subjectIds)
+          .eq("section", section);
+
+        if (labsError) {
+          console.error("Error finding matching labs:", labsError);
+          return false;
+        }
+
+        if (sectionLabs && sectionLabs.length > 0) {
+          matchingLabs = sectionLabs;
+          console.log(
+            `Found ${matchingLabs.length} labs matching exact section`
+          );
+        }
       }
 
-      console.log(`Found ${matchingLabs?.length || 0} matching labs`);
-
-      // If no matching labs, try finding labs without section filter
+      // If no labs found with exact section match or no section provided,
+      // get all labs for the subject
       if (!matchingLabs || matchingLabs.length === 0) {
-        const { data: subjectLabs, error: subjectLabsError } = await supabase
+        const { data: allSubjectLabs, error: subjectLabsError } = await supabase
           .from("labs")
           .select("id")
           .in("subject_id", subjectIds);
@@ -616,52 +778,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return false;
         }
 
-        if (subjectLabs && subjectLabs.length > 0) {
+        if (allSubjectLabs && allSubjectLabs.length > 0) {
+          matchingLabs = allSubjectLabs;
           console.log(
-            `Found ${subjectLabs.length} labs matching subject without section filter`
+            `Found ${allSubjectLabs.length} labs matching subject without section filter`
           );
-
-          // Assign student to all labs for their course, regardless of section
-          const assignments = subjectLabs.map((lab) => ({
-            student_id: studentId,
-            lab_id: lab.id,
-            created_at: new Date().toISOString(),
-          }));
-
-          const { error: insertError } = await supabase
-            .from("student_labs")
-            .insert(assignments);
-
-          if (insertError) {
-            console.error("Error assigning labs:", insertError);
-            return false;
-          }
-
-          console.log(`Auto-assigned student to ${assignments.length} labs`);
-          return true;
-        }
-      } else {
-        // Assign student to matching labs
-        const assignments = matchingLabs.map((lab) => ({
-          student_id: studentId,
-          lab_id: lab.id,
-          created_at: new Date().toISOString(),
-        }));
-
-        const { error: insertError } = await supabase
-          .from("student_labs")
-          .insert(assignments);
-
-        if (insertError) {
-          console.error("Error assigning labs:", insertError);
+        } else {
+          console.log("No labs found for this subject");
           return false;
         }
-
-        console.log(`Auto-assigned student to ${assignments.length} labs`);
-        return true;
       }
 
-      return false;
+      // Assign student to matching labs
+      const assignments = matchingLabs.map((lab) => ({
+        student_id: studentId,
+        lab_id: lab.id,
+        created_at: new Date().toISOString(),
+      }));
+
+      const { error: insertError } = await supabase
+        .from("student_labs")
+        .insert(assignments);
+
+      if (insertError) {
+        console.error("Error assigning labs:", insertError);
+        return false;
+      }
+
+      console.log(`Auto-assigned student to ${assignments.length} labs`);
+      return true;
     } catch (error) {
       console.error("Error in auto lab assignment:", error);
       return false;
@@ -692,22 +837,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let currentLab = null;
       if (userProfile?.course && userProfile?.section) {
         // Find labs that match this student's course and section for today
-        const { data: subjectData } = await supabase
+        const { data: subjectData, error: subjectError } = await supabase
           .from("subjects")
           .select("id")
-          .ilike("name", `%${userProfile.course}%`)
-          .single();
+          .ilike("name", `%${userProfile.course}%`);
 
-        if (subjectData) {
+        if (!subjectError && subjectData && subjectData.length > 0) {
+          const subjectIds = subjectData.map((subject) => subject.id);
+
+          // Try to find labs matching exact section first
           const { data: labData } = await supabase
             .from("labs")
             .select("*")
-            .eq("subject_id", subjectData.id)
+            .in("subject_id", subjectIds)
             .eq("section", userProfile.section)
             .eq("day_of_week", dayOfWeek);
 
-          if (labData && labData.length > 0) {
-            // Find if there's a lab right now
+          // If no exact section match, try without section filter
+          if (!labData || labData.length === 0) {
+            const { data: allLabData } = await supabase
+              .from("labs")
+              .select("*")
+              .in("subject_id", subjectIds)
+              .eq("day_of_week", dayOfWeek);
+
+            if (allLabData && allLabData.length > 0) {
+              // Find if there's a lab right now
+              const currentLabs = allLabData.filter((lab) => {
+                const labStartTime = lab.start_time;
+                const labEndTime = lab.end_time;
+                return currentTime >= labStartTime && currentTime <= labEndTime;
+              });
+
+              if (currentLabs.length > 0) {
+                currentLab = currentLabs[0];
+              }
+            }
+          } else if (labData && labData.length > 0) {
+            // Find if there's a lab right now with exact section match
             const currentLabs = labData.filter((lab) => {
               const labStartTime = lab.start_time;
               const labEndTime = lab.end_time;
