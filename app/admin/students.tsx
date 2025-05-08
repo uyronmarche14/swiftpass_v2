@@ -435,12 +435,12 @@ export default function StudentsScreen() {
       {/* Lab Assignment Modal */}
       <Modal
         visible={isLabAssignModalVisible}
-        animationType="slide"
-        transparent={true}
+        transparent
+        animationType="fade"
         onRequestClose={() => setIsLabAssignModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { maxHeight: "70%" }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Assign Lab</Text>
               <TouchableOpacity
@@ -450,9 +450,11 @@ export default function StudentsScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalText}>
-              Assign {selectedStudent?.full_name} to a lab session
-            </Text>
+            {selectedStudent && (
+              <Text style={styles.modalText}>
+                Assign a lab to {selectedStudent.full_name}
+              </Text>
+            )}
 
             <View style={styles.modalFormGroup}>
               <Text style={styles.modalLabel}>Select Lab</Text>
@@ -470,12 +472,17 @@ export default function StudentsScreen() {
                 dropDownContainerStyle={styles.dropdownContainer}
                 listMode="SCROLLVIEW"
                 scrollViewProps={{
-                  showsVerticalScrollIndicator: true,
                   nestedScrollEnabled: true,
                 }}
                 maxHeight={300}
                 zIndex={3000}
                 zIndexInverse={1000}
+                searchable={true}
+                searchPlaceholder="Search labs..."
+                searchContainerStyle={styles.searchContainer}
+                searchTextInputStyle={styles.searchInput}
+                itemSeparator={true}
+                itemSeparatorStyle={styles.itemSeparator}
               />
             </View>
 
@@ -589,9 +596,16 @@ export default function StudentsScreen() {
                     </View>
 
                     {studentLabs.length === 0 ? (
-                      <Text style={styles.noLabsText}>
-                        Student is not enrolled in any labs
-                      </Text>
+                      <View style={styles.emptyLabsContainer}>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={40}
+                          color={Colors.light.textSecondary}
+                        />
+                        <Text style={styles.noLabsText}>
+                          Student is not enrolled in any labs
+                        </Text>
+                      </View>
                     ) : (
                       <ScrollView
                         style={styles.labsScrollContainer}
@@ -701,13 +715,21 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   dropdown: {
-    borderColor: Colors.light.border,
+    borderColor: Colors.light.borderLight,
+    borderWidth: 1,
+    borderRadius: 8,
     backgroundColor: Colors.light.background,
+    paddingHorizontal: 12,
   },
   dropdownContainer: {
-    borderColor: Colors.light.border,
+    borderColor: Colors.light.borderLight,
     backgroundColor: Colors.light.background,
-    maxHeight: 250,
+    borderRadius: 8,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
   },
   clearFiltersButton: {
     paddingVertical: 6,
@@ -811,9 +833,14 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: Colors.light.background,
     borderRadius: 16,
-    padding: 20,
+    padding: 24,
     width: "90%",
     maxHeight: "80%",
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   studentModalContent: {
     width: "95%",
@@ -824,24 +851,27 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.borderLight,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
     color: Colors.light.text,
   },
   modalText: {
     fontSize: 16,
     color: Colors.light.textSecondary,
-    marginBottom: 20,
+    marginBottom: 24,
   },
   modalFormGroup: {
-    marginBottom: 16,
+    marginBottom: 24,
     zIndex: 1000,
-    maxHeight: 350,
   },
   modalLabel: {
     fontSize: 16,
+    fontWeight: "600",
     color: Colors.light.text,
     marginBottom: 8,
   },
@@ -851,10 +881,12 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   modalButton: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
     marginLeft: 12,
+    minWidth: 100,
+    alignItems: "center",
   },
   cancelButton: {
     backgroundColor: Colors.light.borderLight,
@@ -904,16 +936,15 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   detailSection: {
+    marginTop: 16,
     backgroundColor: Colors.light.backgroundAlt,
     borderRadius: 12,
     padding: 16,
-    marginVertical: 12,
   },
   detailSectionTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: Colors.light.text,
-    marginBottom: 12,
   },
   detailRow: {
     flexDirection: "row",
@@ -942,28 +973,41 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.primary,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 6,
+    borderRadius: 20,
   },
   addLabButtonText: {
     color: "#fff",
     fontSize: 14,
+    fontWeight: "500",
     marginLeft: 4,
   },
+  emptyLabsContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+  },
   noLabsText: {
-    fontSize: 15,
+    fontSize: 16,
     color: Colors.light.textSecondary,
-    fontStyle: "italic",
+    marginTop: 12,
     textAlign: "center",
-    marginVertical: 20,
+  },
+  labsScrollContainer: {
+    maxHeight: 300,
   },
   labCard: {
     flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     backgroundColor: Colors.light.background,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.light.primary,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 12,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
   },
   labInfo: {
     flex: 1,
@@ -972,21 +1016,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: Colors.light.text,
+    marginBottom: 4,
   },
   labDetails: {
     fontSize: 14,
     color: Colors.light.textSecondary,
-    marginTop: 2,
+    marginBottom: 2,
   },
   labSection: {
     fontSize: 14,
     color: Colors.light.textSecondary,
-    marginTop: 2,
   },
   removeLabButton: {
     padding: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.light.backgroundAlt,
   },
-  labsScrollContainer: {
-    maxHeight: 300,
+  itemSeparator: {
+    height: 1,
+    backgroundColor: Colors.light.borderLight,
   },
 });

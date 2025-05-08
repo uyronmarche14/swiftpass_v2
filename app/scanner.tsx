@@ -5,10 +5,10 @@ import {
   StyleSheet,
   SafeAreaView,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import { Stack, router } from "expo-router";
-import { Camera, CameraType } from "expo-camera";
-import { BarCodeScanner, BarCodeScannerResult } from "expo-barcode-scanner";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../lib/supabase";
 
@@ -27,19 +27,32 @@ export default function Scanner() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
 
   useEffect(() => {
     const checkPermissions = async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === "granted");
+      if (permission?.granted) {
+        setHasPermission(true);
+      } else {
+        const { granted } = await requestPermission();
+        setHasPermission(granted);
+      }
     };
 
     checkPermissions();
-  }, []);
+  }, [permission]);
 
-  const handleBarCodeScanned = ({ type, data }: BarCodeScannerResult) => {
+  const handleBarCodeScanned = ({
+    type,
+    data,
+  }: {
+    type: string;
+    data: string;
+  }) => {
     setScanned(true);
     setScanning(false);
+    setLoading(true);
 
     try {
       // Try to parse the QR data as JSON
@@ -56,6 +69,8 @@ export default function Scanner() {
     } catch (error) {
       // If it's not valid JSON, just show the raw data
       setResult(`Scanned: ${data}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -88,7 +103,8 @@ export default function Scanner() {
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ title: "Scanner" }} />
-        <Text>Requesting camera permission...</Text>
+        <ActivityIndicator size="large" color="#3498DB" />
+        <Text style={styles.loadingText}>Requesting camera permission...</Text>
       </SafeAreaView>
     );
   }
@@ -97,9 +113,19 @@ export default function Scanner() {
     return (
       <SafeAreaView style={styles.container}>
         <Stack.Screen options={{ title: "Scanner" }} />
-        <Text>No access to camera</Text>
-        <TouchableOpacity style={styles.button} onPress={() => router.back()}>
-          <Text style={styles.buttonText}>Go Back</Text>
+        <Ionicons name="camera-outline" size={50} color="#7F8C8D" />
+        <Text style={styles.noAccessText}>No access to camera</Text>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => requestPermission()}
+        >
+          <Text style={styles.buttonText}>Grant Permission</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.secondaryButtonText}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -111,8 +137,11 @@ export default function Scanner() {
         options={{
           title: "QR Scanner",
           headerLeft: () => (
-            <TouchableOpacity onPress={() => router.back()}>
-              <Ionicons name="arrow-back" size={24} color="white" />
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#3498DB" />
             </TouchableOpacity>
           ),
         }}
@@ -120,13 +149,13 @@ export default function Scanner() {
 
       {scanning ? (
         <View style={styles.cameraContainer}>
-          <Camera
+          <CameraView
             style={StyleSheet.absoluteFillObject}
-            type={CameraType.BACK}
-            barCodeScannerSettings={{
-              barCodeTypes: [BarCodeScanner.Constants.BarCodeType.qr],
+            facing="back"
+            barcodeScannerSettings={{
+              barcodeTypes: ["qr"],
             }}
-            onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
           >
             <View style={styles.overlay}>
               <View style={styles.unfilled} />
@@ -137,7 +166,14 @@ export default function Scanner() {
               </View>
               <View style={styles.unfilled} />
             </View>
-          </Camera>
+
+            {loading && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+                <Text style={styles.loadingText}>Processing...</Text>
+              </View>
+            )}
+          </CameraView>
 
           {scanned && (
             <View style={styles.scanAgainContainer}>
@@ -154,15 +190,36 @@ export default function Scanner() {
         <View style={styles.resultContainer}>
           {result ? (
             <>
-              <Text style={styles.resultText}>{result}</Text>
+              <View style={styles.resultCard}>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={50}
+                  color="#2ecc71"
+                  style={styles.resultIcon}
+                />
+                <Text style={styles.resultText}>{result}</Text>
+              </View>
               <TouchableOpacity style={styles.button} onPress={startScanning}>
                 <Text style={styles.buttonText}>Scan Again</Text>
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity style={styles.button} onPress={startScanning}>
-              <Text style={styles.buttonText}>Start Scanning</Text>
-            </TouchableOpacity>
+            <>
+              <View style={styles.startScanContent}>
+                <Ionicons
+                  name="qr-code"
+                  size={100}
+                  color="#3498DB"
+                  style={styles.qrIcon}
+                />
+                <Text style={styles.startText}>
+                  Ready to scan attendance QR codes
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.button} onPress={startScanning}>
+                <Text style={styles.buttonText}>Start Scanning</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
       )}
@@ -173,13 +230,25 @@ export default function Scanner() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: "#f8f9fa",
     justifyContent: "center",
     alignItems: "center",
+    padding: 20,
+  },
+  headerButton: {
+    padding: 8,
   },
   cameraContainer: {
     flex: 1,
     width: "100%",
+    overflow: "hidden",
+    borderRadius: 16,
+    marginVertical: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
   },
   overlay: {
     flex: 1,
@@ -191,14 +260,19 @@ const styles = StyleSheet.create({
   },
   rowContainer: {
     flexDirection: "row",
-    height: 200,
+    height: 220,
   },
   scanWindow: {
-    width: 200,
-    height: 200,
-    borderWidth: 2,
-    borderColor: "#fff",
+    width: 220,
+    height: 220,
+    borderWidth: 3,
+    borderColor: "#3498DB",
+    borderRadius: 15,
     backgroundColor: "transparent",
+    shadowColor: "#3498DB",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
   },
   scanAgainContainer: {
     position: "absolute",
@@ -214,21 +288,85 @@ const styles = StyleSheet.create({
     width: "100%",
     padding: 20,
   },
-  resultText: {
-    color: "white",
-    fontSize: 18,
+  resultCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    alignItems: "center",
     marginBottom: 30,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  resultIcon: {
+    marginBottom: 16,
+  },
+  resultText: {
+    color: "#2C3E50",
+    fontSize: 18,
     textAlign: "center",
+    lineHeight: 26,
+  },
+  startScanContent: {
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  qrIcon: {
+    marginBottom: 20,
+  },
+  startText: {
+    fontSize: 18,
+    color: "#7F8C8D",
+    textAlign: "center",
+    marginBottom: 24,
   },
   button: {
-    backgroundColor: "#0E7AFE",
-    padding: 15,
-    borderRadius: 8,
+    backgroundColor: "#3498DB",
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    borderRadius: 12,
+    width: "100%",
+    alignItems: "center",
     marginTop: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   buttonText: {
-    color: "#fff",
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  secondaryButton: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  secondaryButtonText: {
+    color: "#34495E",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 999,
+  },
+  loadingText: {
+    color: "#FFFFFF",
+    marginTop: 12,
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "500",
+  },
+  noAccessText: {
+    fontSize: 18,
+    color: "#34495E",
+    marginVertical: 20,
+    textAlign: "center",
   },
 });
