@@ -254,6 +254,10 @@ export default function SchedulesScreen() {
             </View>
           )}
           contentContainerStyle={styles.schedulesList}
+          showsVerticalScrollIndicator={true}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={10}
         />
       )}
 
@@ -469,16 +473,17 @@ const styles = StyleSheet.create({
   },
   schedulesList: {
     padding: 16,
+    paddingBottom: 100,
   },
   scheduleCard: {
     backgroundColor: Colors.light.background,
     borderRadius: 12,
     marginBottom: 16,
-    overflow: "hidden",
+    padding: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 2,
     elevation: 2,
   },
   scheduleHeader: {
