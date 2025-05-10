@@ -15,7 +15,12 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.ronmarche201114.labpass"
     },
     "web": {
       "bundler": "metro",
@@ -23,7 +28,9 @@
       "favicon": "./assets/images/favicon.png",
       "build": {
         "babel": {
-          "include": ["@supabase/auth-js"]
+          "include": [
+            "@supabase/auth-js"
+          ]
         }
       }
     },
@@ -43,6 +50,14 @@
     "experiments": {
       "typedRoutes": true,
       "tsconfigPaths": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "ea1b9b5f-20eb-4136-8335-8d082c640a01"
+      }
     }
   }
 }

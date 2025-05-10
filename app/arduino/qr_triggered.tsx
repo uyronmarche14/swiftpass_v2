@@ -32,7 +32,7 @@ interface UserProfile {
 }
 
 export default function ESP32Control() {
-  const [ipAddress, setIpAddress] = useState("192.168.137.220");
+  const [ipAddress, setIpAddress] = useState("192.168.68.128");
   const [isOn, setIsOn] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [isScannerActive, setIsScannerActive] = useState(false);
@@ -107,6 +107,7 @@ export default function ESP32Control() {
         );
         await signalAccessGranted(ipAddress);
         setIsLoading(false);
+        setIsOn(true);
         return;
       }
 
@@ -128,6 +129,7 @@ export default function ESP32Control() {
         Alert.alert("Error", "Failed to check lab enrollments");
         await signalAccessDenied(ipAddress);
         setIsLoading(false);
+        setIsOn(false);
         return;
       }
 
@@ -136,6 +138,7 @@ export default function ESP32Control() {
         Alert.alert("Access Denied", "Not enrolled in any labs");
         await signalAccessDenied(ipAddress);
         setIsLoading(false);
+        setIsOn(false);
         return;
       }
 
@@ -152,6 +155,7 @@ export default function ESP32Control() {
         Alert.alert("Access Denied", "No lab scheduled for today");
         await signalAccessDenied(ipAddress);
         setIsLoading(false);
+        setIsOn(false);
         return;
       }
 
@@ -182,6 +186,7 @@ export default function ESP32Control() {
         Alert.alert("Access Denied", "No active lab at this time");
         await signalAccessDenied(ipAddress);
         setIsLoading(false);
+        setIsOn(false);
         return;
       }
 
@@ -193,6 +198,7 @@ export default function ESP32Control() {
 
       // Signal Arduino to grant access
       await signalAccessGranted(ipAddress);
+      setIsOn(true);
     } catch (error) {
       console.error("Error processing QR code:", error);
       Alert.alert("Error", "Failed to process QR code");
@@ -219,10 +225,21 @@ export default function ESP32Control() {
         console.log("Access granted signal sent successfully");
         setIsOn(true);
       } else {
-        console.error("Failed to send access granted signal");
+        console.error(
+          "Failed to send access granted signal, status:",
+          response.status
+        );
+        // Even if the request fails, update UI to granted state since we've already shown the access granted message
+        setIsOn(true);
       }
     } catch (error) {
       console.error("Error signaling access granted:", error);
+      // Even if there's a network error, update UI to granted state since we've already shown the access granted message
+      setIsOn(true);
+      Alert.alert(
+        "Network Error",
+        "Could not connect to the door controller. Please check IP and try again."
+      );
     }
   };
 
@@ -242,10 +259,19 @@ export default function ESP32Control() {
         console.log("Access denied signal sent successfully");
         setIsOn(false);
       } else {
-        console.error("Failed to send access denied signal");
+        console.error(
+          "Failed to send access denied signal, status:",
+          response.status
+        );
+        setIsOn(false);
       }
     } catch (error) {
       console.error("Error signaling access denied:", error);
+      setIsOn(false);
+      Alert.alert(
+        "Network Error",
+        "Could not connect to the door controller. Please check IP and try again."
+      );
     }
   };
 
