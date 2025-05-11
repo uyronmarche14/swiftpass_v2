@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Lab Pass",
-    "slug": "lab-pass",
+    "slug": "swiftpass",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -28,13 +28,12 @@
       "favicon": "./assets/images/favicon.png",
       "build": {
         "babel": {
-          "include": [
-            "@supabase/auth-js"
-          ]
+          "include": ["@supabase/auth-js"]
         }
       }
     },
     "plugins": [
+      "expo-dev-client",
       "expo-router",
       [
         "expo-splash-screen",
@@ -56,8 +55,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "ea1b9b5f-20eb-4136-8335-8d082c640a01"
+        "projectId": "695cd251-4156-4d65-939a-946fb36a6b58"
       }
-    }
+    },
+    "owner": "ronmarche201114"
   }
 }
