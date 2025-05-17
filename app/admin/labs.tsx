@@ -10,6 +10,7 @@ import {
   TextInput,
   Alert,
   FlatList,
+  AppState,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,9 +23,10 @@ import { SectionService } from "../../lib/services/sectionService";
 // Section options will be loaded from the database
 
 export default function LabsScreen() {
-  const { isAdmin, isLoading, getAllLabs } = useAuth();
+  const { isAdmin, getAllLabs } = useAuth();
   const [labs, setLabs] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
 
@@ -55,57 +57,157 @@ export default function LabsScreen() {
   ];
 
   useEffect(() => {
+    setIsLoading(true);
     loadData();
+
+    // Add event listeners for app state changes to refresh data when app comes to foreground
+    const subscription = AppState.addEventListener('change', (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        console.log('App has come to the foreground, refreshing data...');
+        loadData();
+      }
+    });
+
+    return () => {
+      // Clean up the subscription when component unmounts
+      subscription.remove();
+    };
   }, []);
+
+  const refreshLabs = async () => {
+    try {
+      console.log("Fetching all labs from the database...");
+      const labsData = await getAllLabs();
+      console.log(`Retrieved ${labsData.length} labs from database`);
+      setLabs(labsData);
+      return labsData;
+    } catch (error) {
+      console.error("Error fetching labs:", error);
+      throw error;
+    }
+  };
 
   const loadData = async () => {
     setIsLoadingData(true);
     try {
-      const labsData = await getAllLabs();
-      setLabs(labsData);
-
-      // Fetch subjects
+      console.log('=== BEGIN LABS SCREEN DATA LOADING ===');
+      
+      // Load sections first with extensive logging
+      console.log('1. Loading sections...');
+      const sections = await loadSectionsFromDatabase();
+      console.log(`Sections loaded: ${sections.length} items available for dropdown`); 
+      
+      // Then subjects
+      console.log('2. Loading subjects...');
       const { data: subjectsData, error: subjectsError } = await supabase
         .from("subjects")
-        .select("*")
-        .order("name", { ascending: true });
+        .select("*");
 
-      if (subjectsError) throw subjectsError;
-      setSubjects(subjectsData || []);
-      
-      // Load sections from the database using SectionService
-      try {
-        const sectionsResult = await SectionService.getAllSections();
-        
-        if (sectionsResult.success && sectionsResult.data) {
-          const sectionsData = sectionsResult.data as any[];
-          const formattedSections = sectionsData.map(section => ({
-            label: section.name,
-            value: section.code
-          }));
-          setSectionOptions(formattedSections);
-        } else {
-          // Fallback to hardcoded sections if there's an error
-          setSectionOptions([
-            { label: "Section A2021", value: "A2021" },
-            { label: "Section B2021", value: "B2021" },
-            { label: "Section C2021", value: "C2021" },
-          ]);
-        }
-      } catch (sectionsError) {
-        console.error("Error loading sections:", sectionsError);
-        // Fallback to hardcoded sections if there's an error
-        setSectionOptions([
-          { label: "Section A2021", value: "A2021" },
-          { label: "Section B2021", value: "B2021" },
-          { label: "Section C2021", value: "C2021" },
-        ]);
+      if (subjectsError) {
+        console.error('Error loading subjects:', subjectsError);
+        throw subjectsError;
       }
+
+      console.log(`Subjects loaded: ${subjectsData?.length || 0} items`); 
+      setSubjects(subjectsData || []);
+
+      // Then labs
+      console.log('3. Loading labs...');
+      await refreshLabs();
+      
+      console.log('=== ALL DATA LOADED SUCCESSFULLY ===');
     } catch (error) {
       console.error("Error loading labs data:", error);
+      Alert.alert(
+        "Error", 
+        "Failed to load labs data. Please check your connection and try again."
+      );
     } finally {
       setIsLoadingData(false);
+      setIsLoading(false);
     }
+  };
+  
+  // Separate function to load sections from database
+  const loadSectionsFromDatabase = async () => {
+    try {
+      console.log("Loading sections from database...");
+      
+      // IMMEDIATE FORCE-SET DEFAULT SECTIONS FIRST
+      // This ensures sections appear regardless of backend response
+      const forcedSections = createDefaultSections();
+      console.log("FORCED DEFAULT SECTIONS CREATED", forcedSections);
+      
+      // Now try to get real sections from the database (will replace defaults if successful)
+      const sectionsResult = await SectionService.getAllSections();
+      console.log("Sections data response:", JSON.stringify(sectionsResult, null, 2));
+      
+      if (sectionsResult.success && sectionsResult.data) {
+        // Ensure we have an array of sections
+        const sectionsArray = Array.isArray(sectionsResult.data) 
+          ? sectionsResult.data 
+          : [sectionsResult.data];
+        
+        console.log("Sections array received from backend:", sectionsArray);
+        
+        if (sectionsArray.length > 0) {
+          // Format sections for dropdown with careful error handling
+          const formattedSections = sectionsArray
+            .filter(section => section && (section.name || section.code)) // Filter out invalid data
+            .map(section => ({
+              label: section.name || section.code || `Section ${section.id}`,
+              value: section.code || section.id
+            }));
+          
+          console.log(`Loaded ${formattedSections.length} real sections from database`);
+          
+          if (formattedSections.length > 0) {
+            // Only update if we actually got something from the database
+            setSectionOptions(formattedSections);
+            
+            // If we have no section selected but sections are available, select the first one
+            if (!section && formattedSections.length > 0) {
+              setSection(formattedSections[0].value);
+            }
+            
+            return formattedSections;
+          }
+        }
+      }
+      
+      // If we're here, we're using the default sections that were already set
+      console.log("Using previously set default sections");
+      return forcedSections;
+      
+    } catch (sectionsError) {
+      console.error("Error loading sections from database:", sectionsError);
+      // We already set default sections at the beginning, so just return those
+      console.log("Using previously set default sections due to error");
+      return sectionOptions;
+    }
+  };
+  
+  // Helper function to create default sections
+  const createDefaultSections = () => {
+    console.log("Creating default section options...");
+    
+    // Fallback to current date year
+    const currentYear = new Date().getFullYear();
+    // Create more sections for testing
+    const defaultSections = [
+      { label: `Section A${currentYear}`, value: `A${currentYear}` },
+      { label: `Section B${currentYear}`, value: `B${currentYear}` },
+      { label: `Section C${currentYear}`, value: `C${currentYear}` },
+      { label: `Section D${currentYear}`, value: `D${currentYear}` },
+      { label: `Section E${currentYear}`, value: `E${currentYear}` },
+    ];
+    
+    setSectionOptions(defaultSections);
+    if (!section && defaultSections.length > 0) {
+      setSection(defaultSections[0].value);
+    }
+    
+    return defaultSections;
   };
 
   const handleCreateLab = async () => {
@@ -346,33 +448,84 @@ export default function LabsScreen() {
               <Text style={styles.inputLabel}>Lab Name *</Text>
               <TextInput
                 style={styles.input}
+                placeholder="Enter lab name"
+                placeholderTextColor={Colors.light.textSecondary}
                 value={labName}
                 onChangeText={setLabName}
-                placeholder="Enter lab name"
               />
 
-              <Text style={styles.inputLabel}>Section (Optional)</Text>
-              <DropDownPicker
-                open={openSectionPicker}
-                value={section}
-                items={sectionOptions}
-                setOpen={setOpenSectionPicker}
-                setValue={setSection}
-                style={styles.dropdown}
-                dropDownContainerStyle={styles.dropdownContainer}
-                placeholder="Select section"
-                zIndex={4000}
-                zIndexInverse={1000}
-              />
+              <Text style={styles.inputLabel}>Subject *</Text>
+              {subjects.length > 0 ? (
+                <DropDownPicker
+                  open={openSubjectPicker}
+                  value={selectedSubject}
+                  items={subjects.map((subject) => ({
+                    label: `${subject.name} ${subject.code ? `(${subject.code})` : ''}`,
+                    value: subject.id,
+                  }))}
+                  setOpen={setOpenSubjectPicker}
+                  setValue={setSelectedSubject}
+                  style={styles.dropdown}
+                  dropDownContainerStyle={styles.dropdownContainer}
+                  placeholder="Select Subject"
+                  searchable={true}
+                  searchPlaceholder="Search for a subject..."
+                  zIndex={3000}
+                  zIndexInverse={1000}
+                  maxHeight={200}
+                  autoScroll={true}
+                  ListEmptyComponent={(() => (
+                    <Text style={styles.emptyListText}>No subjects found</Text>
+                  ))}
+                  showTickIcon={true}
+                />
+              ) : (
+                <View style={styles.loadingDropdownContainer}>
+                  <ActivityIndicator size="small" color={Colors.light.primary} />
+                  <Text style={styles.dropdownLoadingText}>Loading subjects...</Text>
+                </View>
+              )}
 
-              <Text
-                style={[
-                  styles.inputLabel,
-                  { marginTop: openSectionPicker ? 180 : 16 },
-                ]}
-              >
-                Day of Week *
-              </Text>
+              <Text style={styles.inputLabel}>Section *</Text>
+              {isLoadingData ? (
+                <View style={styles.loadingDropdownContainer}>
+                  <ActivityIndicator size="small" color={Colors.light.primary} />
+                  <Text style={styles.dropdownLoadingText}>Loading sections...</Text>
+                </View>
+              ) : sectionOptions.length > 0 ? (
+                <DropDownPicker
+                  open={openSectionPicker}
+                  value={section}
+                  items={sectionOptions}
+                  setOpen={setOpenSectionPicker}
+                  setValue={setSection}
+                  style={styles.dropdown}
+                  dropDownContainerStyle={styles.dropdownContainer}
+                  placeholder="Select Section"
+                  searchable={true}
+                  searchPlaceholder="Search for a section..."
+                  zIndex={2000}
+                  zIndexInverse={2000}
+                  maxHeight={200}
+                  autoScroll={true}
+                  ListEmptyComponent={(() => (
+                    <Text style={styles.emptyListText}>No sections found</Text>
+                  ))}
+                  showTickIcon={true}
+                  onOpen={() => {
+                    // Close other pickers when this one opens
+                    setOpenDayPicker(false);
+                    setOpenSubjectPicker(false);
+                  }}
+                />
+              ) : (
+                <View style={styles.loadingDropdownContainer}>
+                  <ActivityIndicator size="small" color={Colors.light.primary} />
+                  <Text style={styles.dropdownLoadingText}>Loading sections...</Text>
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Day of Week *</Text>
               <DropDownPicker
                 open={openDayPicker}
                 value={dayOfWeek}
@@ -381,9 +534,16 @@ export default function LabsScreen() {
                 setValue={setDayOfWeek}
                 style={styles.dropdown}
                 dropDownContainerStyle={styles.dropdownContainer}
-                placeholder="Select day"
-                zIndex={3000}
-                zIndexInverse={1000}
+                placeholder="Select Day"
+                zIndex={1000}
+                zIndexInverse={3000}
+                maxHeight={200}
+                onOpen={() => {
+                  // Close other pickers when this one opens
+                  setOpenSectionPicker(false);
+                  setOpenSubjectPicker(false);
+                }}
+                showTickIcon={true}
               />
 
               <View style={styles.timeContainer}>
@@ -391,77 +551,36 @@ export default function LabsScreen() {
                   <Text style={styles.inputLabel}>Start Time *</Text>
                   <TextInput
                     style={styles.input}
+                    placeholder="HH:MM"
+                    placeholderTextColor={Colors.light.textSecondary}
                     value={startTime}
                     onChangeText={setStartTime}
-                    placeholder="HH:MM"
                     keyboardType="numbers-and-punctuation"
                   />
+                  <Text style={styles.inputHelper}>Format: 09:00</Text>
                 </View>
 
                 <View style={styles.timeInput}>
                   <Text style={styles.inputLabel}>End Time *</Text>
                   <TextInput
                     style={styles.input}
+                    placeholder="HH:MM"
+                    placeholderTextColor={Colors.light.textSecondary}
                     value={endTime}
                     onChangeText={setEndTime}
-                    placeholder="HH:MM"
                     keyboardType="numbers-and-punctuation"
                   />
+                  <Text style={styles.inputHelper}>Format: 10:30</Text>
                 </View>
               </View>
-
-              <Text
-                style={[
-                  styles.inputLabel,
-                  { marginTop: openDayPicker ? 180 : 16 },
-                ]}
-              >
-                Subject *
-              </Text>
-              <DropDownPicker
-                open={openSubjectPicker}
-                value={selectedSubject}
-                items={subjects.map((subject) => {
-                  // Convert subject code to full course name
-                  const courseFullName =
-                    subject.code === "BSIT"
-                      ? "Bachelor of Science in Information Technology"
-                      : subject.code === "BSCS"
-                      ? "Bachelor of Science in Computer Science"
-                      : subject.name;
-
-                  return {
-                    label: `${courseFullName} (${subject.code || "No code"})`,
-                    value: subject.id,
-                  };
-                })}
-                setOpen={setOpenSubjectPicker}
-                setValue={setSelectedSubject}
-                style={styles.dropdown}
-                dropDownContainerStyle={styles.dropdownContainer}
-                placeholder="Select subject"
-                zIndex={2000}
-                zIndexInverse={2000}
-              />
 
               <TouchableOpacity
                 style={[
                   styles.createButton,
-                  (!labName ||
-                    !dayOfWeek ||
-                    !startTime ||
-                    !endTime ||
-                    !selectedSubject) &&
-                    styles.disabledButton,
+                  (isLoadingData || !labName || !dayOfWeek || !startTime || !endTime || !selectedSubject) && styles.disabledButton,
                 ]}
                 onPress={handleCreateLab}
-                disabled={
-                  !labName ||
-                  !dayOfWeek ||
-                  !startTime ||
-                  !endTime ||
-                  !selectedSubject
-                }
+                disabled={isLoadingData || !labName || !dayOfWeek || !startTime || !endTime || !selectedSubject}
               >
                 <Text style={styles.createButtonText}>Create Lab</Text>
               </TouchableOpacity>
@@ -633,6 +752,12 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
   },
+  inputHelper: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4,
+    marginBottom: 8,
+  },
   dropdown: {
     backgroundColor: Colors.light.backgroundAlt,
     borderWidth: 0,
@@ -644,6 +769,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.light.border,
     borderRadius: 8,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  loadingDropdownContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.light.backgroundAlt,
+    height: 48,
+    borderRadius: 8,
+    marginBottom: 16,
+    padding: 10,
+  },
+  dropdownLoadingText: {
+    color: Colors.light.textSecondary,
+    marginLeft: 8,
+    fontSize: 14,
+  },
+  emptyListText: {
+    color: Colors.light.textSecondary,
+    textAlign: "center",
+    padding: 16,
+    fontSize: 14,
   },
   timeContainer: {
     flexDirection: "row",
