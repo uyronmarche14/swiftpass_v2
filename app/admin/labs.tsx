@@ -585,7 +585,7 @@ export default function LabsScreen() {
                 <Text style={styles.createButtonText}>Create Lab</Text>
               </TouchableOpacity>
             </ScrollView>
-          </View>
+                                </View>
         </View>
       </Modal>
     </View>

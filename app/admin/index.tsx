@@ -123,6 +123,14 @@ export default function AdminDashboard() {
 
         <TouchableOpacity
           style={styles.actionButton}
+          onPress={() => router.push("/admin/qrcode" as any)}
+        >
+          <Ionicons name="qr-code" size={24} color="#fff" />
+          <Text style={styles.actionButtonText}>Admin QR Code</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
           onPress={() => router.push("/admin/sections" as any)}
         >
           <Ionicons name="layers-outline" size={24} color="#fff" />

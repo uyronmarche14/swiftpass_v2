@@ -17,7 +17,7 @@ import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function AdminLoginScreen() {
-  const [email, setEmail] = useState("admin@swiftpass.edu");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const { adminLogin, isLoading } = useAuth();
@@ -53,18 +53,18 @@ export default function AdminLoginScreen() {
         <View style={styles.formContainer}>
           <Text style={styles.headerText}>Administrator Login</Text>
           <Text style={styles.subtitleText}>
-            Sign in to access the admin dashboard
+            Enter your username (e.g., d.abesamis) or email to access the admin dashboard
           </Text>
 
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Username or Email"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
-              editable={false}
+              editable={true}
             />
             <Ionicons
               name="mail-outline"

@@ -6,13 +6,8 @@ import { supabase } from "../lib/supabase";
 import { AuthService } from "../lib/services/authService";
 import {
   UserProfileService,
-  UserProfile as BaseUserProfile,
+  UserProfile,
 } from "../lib/services/userProfileService";
-
-// Extended user profile with additional properties
-interface UserProfile extends BaseUserProfile {
-  role?: string;
-}
 
 interface AdminProfile {
   id: string;
@@ -112,26 +107,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const storedSession = await AsyncStorage.getItem("session");
       const storedUser = await AsyncStorage.getItem("user");
       const storedProfile = await AsyncStorage.getItem("userProfile");
-      
-      // Check for stored admin data
-      const storedAdminProfile = await AsyncStorage.getItem("adminProfile");
-      const storedIsAdmin = await AsyncStorage.getItem("isAdmin");
-      
-      // Set admin status if available
-      if (storedIsAdmin === "true") {
-        console.log("Restoring admin status from storage");
-        setIsAdmin(true);
-        
-        if (storedAdminProfile) {
-          try {
-            const adminProfileData = JSON.parse(storedAdminProfile);
-            setAdminProfile(adminProfileData);
-            console.log(`Admin profile restored: ${adminProfileData.full_name}`);
-          } catch (parseError) {
-            console.error("Error parsing admin profile:", parseError);
-          }
-        }
-      }
 
       if (storedSession && storedUser) {
         // We have stored credentials, let's restore the session
@@ -178,96 +153,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await AsyncStorage.setItem("user", JSON.stringify(session.user));
           await AsyncStorage.setItem("session", JSON.stringify(session));
         } else {
-          // No valid session found and not admin, reset state
-          if (!storedIsAdmin) {
-            setIsAuthenticated(false);
-            setUser(null);
-            setUserProfile(null);
-          }
+          // No valid session found
+          setIsAuthenticated(false);
+          setUser(null);
+          setUserProfile(null);
         }
       }
-      
-      // Log auth state for debugging
-      console.log(`Auth check complete - isAdmin: ${isAdmin}, isAuthenticated: ${isAuthenticated}`);
-      
     } catch (error) {
       console.error("Auth check error:", error);
       // If there's an error during auth check, reset to logged out state
       setIsAuthenticated(false);
       setUser(null);
       setUserProfile(null);
-      setIsAdmin(false);
-      setAdminProfile(null);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Effect to detect and set admin status whenever user or profiles change
-  useEffect(() => {
-    const checkAdminStatus = () => {
-      // Admin roles that should have admin privileges
-      const adminRoles = ['admin', 'super_admin', 'faculty_admin'];
-      
-      // Check user metadata for admin roles
-      const userMetadataRole = user?.user_metadata?.role;
-      const appMetadataRole = user?.app_metadata?.role;
-      
-      // Check profiles for admin roles
-      const userProfileRole = userProfile?.role;
-      const adminProfileRole = adminProfile?.role;
-      
-      // Log all the role information we have for debugging
-      console.log('Checking admin status with roles:', {
-        userMetadataRole,
-        appMetadataRole,
-        userProfileRole,
-        adminProfileRole,
-        userId: user?.id,
-        userEmail: user?.email
-      });
-      
-      // Check if any role is an admin role
-      if (
-        adminRoles.includes(userMetadataRole) || 
-        adminRoles.includes(appMetadataRole) || 
-        adminRoles.includes(userProfileRole) || 
-        adminRoles.includes(adminProfileRole)
-      ) {
-        console.log('Admin role detected, setting isAdmin = true');
-        setIsAdmin(true);
-        return true;
-      }
-      
-      // Special check for faculty email patterns if no explicit role is found
-      const email = user?.email;
-      if (email && typeof email === 'string' && !email.includes('@swiftpass.edu')) {
-        // Faculty accounts typically don't have @swiftpass.edu domain
-        const potentialFacultyPattern = /^[a-z]\.[a-z]+$/i;  // pattern like d.abesamis
-        if (potentialFacultyPattern.test(email)) {
-          console.log('Faculty email pattern detected, setting isAdmin = true');
-          setIsAdmin(true);
-          return true;
-        }
-      }
-      
-      // Also check if user ID starts with "faculty-" which indicates a faculty admin
-      const userId = user?.id;
-      if (userId && typeof userId === 'string' && userId.startsWith('faculty-')) {
-        console.log('Faculty user ID pattern detected, setting isAdmin = true');
-        setIsAdmin(true);
-        return true;
-      }
-      
-      return false;
-    };
-    
-    // Run the check if we have a user
-    if (user) {
-      checkAdminStatus();
-    }
-  }, [user, userProfile, adminProfile]);
-  
   const fetchUserProfile = async (userId: string) => {
     try {
       console.log("Fetching user profile for userId:", userId);
@@ -580,25 +482,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(response.error || "Logout failed");
       }
 
-      // Clear all user states
       setIsAuthenticated(false);
       setUser(null);
       setUserProfile(null);
-      
-      // Also clear admin states
-      setIsAdmin(false);
-      setAdminProfile(null);
 
-      // Remove all stored user data
       await AsyncStorage.removeItem("user");
       await AsyncStorage.removeItem("userProfile");
       await AsyncStorage.removeItem("session");
-      
-      // Remove admin-specific data
-      await AsyncStorage.removeItem("adminProfile");
-      await AsyncStorage.removeItem("isAdmin");
-      
-      console.log("Logout successful - all user and admin data cleared");
 
       router.replace("/login");
       return true;
@@ -1645,160 +1535,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-    // Generate a special admin QR code that bypasses schedule checks
+  // Generate a special admin QR code that bypasses schedule checks
   const getAdminQRCode = async (): Promise<string | null> => {
     try {
-      // Log current state for debugging
-      console.log("Debug - getAdminQRCode state:", {
-        userExists: !!user,
-        userId: user?.id,
-        userEmail: user?.email,
-        isAdmin,
-        adminProfile,
-        role: adminProfile?.role || user?.user_metadata?.role || user?.app_metadata?.role
-      });
-      
-      // Check if user is faculty admin based on role in metadata or adminProfile
-      const isFacultyAdmin = 
-        (user?.user_metadata?.role === "faculty_admin") || 
-        (user?.app_metadata?.role === "faculty_admin") || 
-        (adminProfile?.role === "faculty_admin");
-      
-      // Allow both system admins and faculty admins to generate QR codes
-      if (!user || (!isAdmin && !isFacultyAdmin)) {
+      if (!user || !isAdmin) {
         console.error("Error: Only admins can generate admin QR codes");
-        return null;
-      }
 
-      // Create admin information
-      const now = new Date();
-      
-      // Check if the user ID is a valid UUID format
-      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const isValidUuid = typeof user.id === 'string' && uuidPattern.test(user.id);
-      
-      // For faculty users with non-UUID IDs, we'll skip database operations
-      // and return a memory-only QR code that still has the admin_override flag
-      if (!isValidUuid) {
-        console.log(`Faculty admin detected with non-UUID ID: ${user.id}. Generating in-memory QR code.`);
-        
-        // Create a memory-only admin QR code with all the necessary data
-        const inMemoryQrData = {
-          userId: user.id,
-          name: adminProfile?.full_name || "Administrator",
-          role: adminProfile?.role || "admin",
-          email: user.email,
-          timestamp: now.toISOString(),
-          is_admin: true,
-          admin_override: true,     // Special flag to bypass schedule checks
-          privilege_level: 100,     // High privilege level for admins
-          expiry: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(), // 24 hour validity
-          generated_at: now.toISOString(),
-          generated_type: "memory-only",  // Indicate this wasn't stored in the database
-        };
-        
-        console.log("Generated in-memory admin QR code successfully");
-        return JSON.stringify(inMemoryQrData);
-      }
-      
-      // For regular admin accounts with valid UUIDs, proceed with database operations
-      console.log(`Admin with valid UUID: ${user.id}. Proceeding with database operations.`);
-      
-      // Create the QR code data for storage in the database
-      const adminData = {
-        userId: user.id,
-        name: adminProfile?.full_name || "Administrator",
-        role: adminProfile?.role || "admin",
-        email: user.email,
-        timestamp: now.toISOString(),
-        is_admin: true,
-        admin_override: true,     // Special flag to bypass schedule checks
-        privilege_level: 100,     // High privilege level for admins
-        expiry: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(), // 24 hour validity
-        generated_at: now.toISOString(),
-      };
-      
-      // Check if admin already has a QR code
-      const { data: existingQrCode, error: qrError } = await supabase
-        .from("qr_codes")
-        .select("*")
-        .eq("student_id", user.id)
-        .maybeSingle();
-      
-      // Handle any query errors
-      if (qrError && qrError.code !== "PGRST116") {
-        console.error("Error checking for existing QR code:", qrError);
-        // In case of database error, return the in-memory code
-        console.log("Database error. Falling back to in-memory QR code.");
-        return JSON.stringify(adminData);
-      }
-      
-      // Update or create the QR code
-      if (existingQrCode) {
-        console.log("Updating existing admin QR code");
-        
-        const { error: updateError } = await supabase
-          .from("qr_codes")
-          .update({
-            qr_data: adminData,
-            updated_at: now.toISOString(),
-          })
-          .eq("id", existingQrCode.id);
-          
-        if (updateError) {
-          console.error("Error updating QR code:", updateError);
-          // Even if update fails, return the QR code data
-          return JSON.stringify(adminData);
-        }
-      } else {
-        console.log("Creating new admin QR code");
-        
-        // IMPORTANT: Only create new QR code entry for admin with valid UUID
-        // that matches an existing student_id in the students table
-        const { error: insertError } = await supabase.from("qr_codes").insert([
-          {
-            student_id: user.id,  // Use the actual user ID which should exist in students table
-            qr_data: adminData,
-            created_at: now.toISOString(),
-            updated_at: now.toISOString(),
-          },
-        ]);
-        
-        if (insertError) {
-          console.error("Error creating QR code:", insertError);
-          // If insert fails, still return the QR code data for immediate use
-          console.log("Database insert failed. Using in-memory QR code instead.");
-          return JSON.stringify(adminData);
-        }
-      }
-      
-      // Return the serialized QR code data regardless of database operation success
-      console.log("Successfully generated admin QR code");
-      return JSON.stringify(adminData);
-    } catch (error) {
+const getAllLabs = async () => {
+try {
+const { data, error } = await supabase
+.from("labs")
+.select(
+`
+*,
+subjects(name, code)
+`
+)
+.order("day_of_week", { ascending: true });
+
+if (error) throw error;
+return data || [];
+} catch (error) {
+console.error("Error fetching labs:", error);
+return [];
+}
+};
+
+const createLab = async (labData: any) => {
+try {
+if (!isAdmin) {
+throw new Error("Unauthorized access");
+}
+
+const { error } = await supabase.from("labs").insert([labData]);
+
+if (error) throw error;
+return true;
+} catch (error) {
+console.error("Error creating lab:", error);
+return false;
+}
+};
+
+const assignStudentToLab = async (studentId: string, labId: string) => {
+try {
+if (!isAdmin) {
+throw new Error("Unauthorized access");
+}
       console.error("Admin QR code generation error:", error);
-      
-      // Last resort fallback - create a basic admin QR code in memory
-      if (user && isAdmin) {
-        const fallbackData = {
-          userId: user.id,
-          name: adminProfile?.full_name || "Administrator",
-          email: user.email,
-          timestamp: new Date().toISOString(),
-          is_admin: true,
-          admin_override: true,
-          privilege_level: 100,
-          expiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-          generated_type: "fallback",
-        };
-        console.log("Generated fallback admin QR code");
-        return JSON.stringify(fallbackData);
-      }
-      
       return null;
     }
   };
-
 
   // Update user profile
   const updateProfile = async (profileData: Partial<UserProfile>): Promise<boolean> => {
@@ -1896,4 +1683,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
