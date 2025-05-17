@@ -59,6 +59,7 @@ interface AuthContextType {
     course?: string,
     section?: string
   ) => Promise<boolean>;
+  updateProfile: (profileData: Partial<UserProfile>) => Promise<boolean>;
   refreshUserProfile: () => Promise<void>;
   getQRCode: () => Promise<string | null>;
   getAllStudents: () => Promise<any[]>;
@@ -978,7 +979,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // First check if user has a QR code in the database
-      const { data: qrCodeData, error: qrError } = await supabase
+      const { data: qrCodeData, error: qrError }: { data: { qr_data: any } | null, error: { code: string, message: string } | null } = await supabase
         .from("qr_codes")
         .select("qr_data")
         .eq("student_id", user.id)
@@ -1135,7 +1136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (qrError) {
         // Handle creation of new QR code
-        if (qrError.code === "PGRST116" && userProfile) {
+        if ((qrError as { code: string }).code === "PGRST116" && userProfile) {
           const success = await createUserQRCode(
             user.id,
             userProfile.full_name,
@@ -1454,6 +1455,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Update user profile
+  const updateProfile = async (profileData: Partial<UserProfile>): Promise<boolean> => {
+    try {
+      if (!user?.id) {
+        throw new Error('User not authenticated');
+      }
+      
+      setIsLoading(true);
+      
+      // Only update fields that are provided
+      const updates: any = {};
+      if (profileData.full_name) updates.full_name = profileData.full_name;
+      if (profileData.student_id) updates.student_id = profileData.student_id;
+      if ('course' in profileData) updates.course = profileData.course;
+      if ('section' in profileData) updates.section = profileData.section;
+      if ('phone_number' in profileData) updates.phone_number = profileData.phone_number;
+      if ('address' in profileData) updates.address = profileData.address;
+      if ('emergency_contact' in profileData) updates.emergency_contact = profileData.emergency_contact;
+      if ('bio' in profileData) updates.bio = profileData.bio;
+      
+      updates.updated_at = new Date().toISOString();
+      
+      // Update in Supabase
+      const { error } = await supabase
+        .from('students')
+        .update(updates)
+        .eq('id', user.id);
+        
+      if (error) throw error;
+      
+      // Also try to update Express backend if available
+      try {
+        const response = await fetch(`${API_URL}/profile/update`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.id,
+            ...updates
+          }),
+        });
+        
+        if (!response.ok) {
+          console.warn('Express backend profile update failed, but Supabase update succeeded');
+        }
+      } catch (expressError) {
+        console.warn('Express backend unavailable for profile update:', expressError);
+      }
+      
+      // Update local state and storage
+      await refreshUserProfile();
+      
+      return true;
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const contextValue: AuthContextType = {
     isAuthenticated,
     isLoading,
@@ -1465,6 +1528,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     adminLogin,
     logout,
     register,
+    updateProfile,
     refreshUserProfile,
     getQRCode,
     getAllStudents,

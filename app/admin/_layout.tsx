@@ -51,6 +51,24 @@ export default function AdminLayout() {
         }}
       />
       <Stack.Screen
+        name="courses"
+        options={{
+          title: "Manage Courses",
+        }}
+      />
+      <Stack.Screen
+        name="attendance"
+        options={{
+          title: "Attendance Records",
+        }}
+      />
+      <Stack.Screen
+        name="sections"
+        options={{
+          title: "Manage Sections",
+        }}
+      />
+      <Stack.Screen
         name="schedules"
         options={{
           title: "Manage Schedules",

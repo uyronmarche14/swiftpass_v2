@@ -123,6 +123,30 @@ export default function AdminDashboard() {
 
         <TouchableOpacity
           style={styles.actionButton}
+          onPress={() => router.push("/admin/sections" as any)}
+        >
+          <Ionicons name="layers-outline" size={24} color="#fff" />
+          <Text style={styles.actionButtonText}>Manage Sections</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => router.push("/admin/courses" as any)}
+        >
+          <Ionicons name="school" size={24} color="#fff" />
+          <Text style={styles.actionButtonText}>Manage Courses</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => router.push("/admin/attendance" as any)}
+        >
+          <Ionicons name="calendar-outline" size={24} color="#fff" />
+          <Text style={styles.actionButtonText}>Attendance Records</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
           onPress={() => router.push("/admin/schedules" as any)}
         >
           <Ionicons name="time" size={24} color="#fff" />

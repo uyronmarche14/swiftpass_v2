@@ -100,119 +100,136 @@ export default function Dashboard() {
       console.log("Student course:", studentCourse);
       console.log("Student section:", studentSection);
 
-      // First check if we can find matching subjects
-      const { data: subjects, error: subjectsError } = await supabase
-        .from("subjects")
-        .select("*");
+      // First try to get the labs directly from userProfile's lab_schedule if available
+      const formattedLabs: Lab[] = [];
+      const daysOrder = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ];
 
-      if (subjectsError) {
-        console.error("Error fetching subjects:", subjectsError);
-      } else if (studentCourse && subjects) {
-        // Look for matching subjects based on name or code
-        const matchingSubjects = subjects.filter(
-          (subject) =>
-            subject.name.toUpperCase().includes(studentCourse.toUpperCase()) ||
-            (subject.code &&
-              studentCourse
-                .toUpperCase()
-                .includes(subject.code.toUpperCase())) ||
-            (subject.code &&
-              subject.code.toUpperCase().includes(studentCourse.toUpperCase()))
-        );
+      if (userProfile.lab_schedule && Object.keys(userProfile.lab_schedule).length > 0) {
+        console.log("Using lab_schedule from user profile");
 
-        if (matchingSubjects.length === 0) {
-          console.warn(`No subjects found matching course: ${studentCourse}`);
-        } else {
+        // Map days from the lab_schedule object in user profile
+        const daysWithLabs = Object.keys(userProfile.lab_schedule);
+        console.log(`Found lab schedule with ${daysWithLabs.length} days`);
+
+        for (const day of daysWithLabs) {
+          const dayLabs = userProfile.lab_schedule[day] || [];
+          for (const dayLab of dayLabs) {
+            formattedLabs.push({
+              id: dayLab.id || `profile-${Math.random().toString(36).substring(2, 7)}`,
+              name: dayLab.name || "Scheduled Lab",
+              section: dayLab.section || "Not Specified",
+              day_of_week: day,
+              start_time: dayLab.start_time || "08:00:00",
+              end_time: dayLab.end_time || "10:00:00",
+              subject_name: dayLab.subject_name || dayLab.subject?.name || "Course Subject",
+              subject_code: dayLab.subject_code || dayLab.subject?.code || "",
+            });
+          }
+        }
+
+        console.log(`Added ${formattedLabs.length} labs from user profile schedule`);
+      } else {
+        // If no lab_schedule in profile, fetch labs from database
+        console.log("No lab_schedule in profile, querying database");
+
+        // First check if we can find matching subjects based on course
+        const { data: subjects, error: subjectsError } = await supabase
+          .from("subjects")
+          .select("*");
+
+        if (subjectsError) {
+          console.error("Error fetching subjects:", subjectsError);
+        } else if (studentCourse && subjects) {
+          // Look for matching subjects
+          const matchingSubjects = subjects.filter(
+            (subject) =>
+              subject.name.toUpperCase().includes(studentCourse.toUpperCase()) ||
+              (subject.code &&
+                studentCourse
+                  .toUpperCase()
+                  .includes(subject.code.toUpperCase())) ||
+              (subject.code &&
+                subject.code.toUpperCase().includes(studentCourse.toUpperCase()))
+          );
+
           console.log(
-            `Found ${matchingSubjects.length} matching subjects:`,
-            matchingSubjects.map((s) => `${s.code}: ${s.name}`)
+            `Found ${matchingSubjects.length} matching subjects for course: ${studentCourse}`
           );
         }
-      }
 
-      // First get all labs with subject information using proper foreign key relationship
-      const { data: allLabsData, error: allLabsError } = await supabase.from(
-        "labs"
-      ).select(`
+        // Get all labs with subject information using proper foreign key relationship
+        const { data: allLabsData, error: allLabsError } = await supabase.from(
+          "labs"
+        ).select(`
           *,
           subjects:subject_id (
             id, name, code, description
           )
         `);
 
-      if (allLabsError) {
-        console.error("Error fetching labs:", allLabsError);
-        throw allLabsError;
+        if (allLabsError) {
+          console.error("Error fetching labs:", allLabsError);
+          throw allLabsError;
+        }
+
+        console.log(`Retrieved ${allLabsData?.length || 0} labs from database`);
+
+        // Process the labs from database into our format
+        for (const lab of allLabsData || []) {
+          // Skip labs without subject
+          if (!lab || !lab.subjects) continue;
+
+          // Get the subject data
+          const subject = lab.subjects || {};
+
+          formattedLabs.push({
+            id: lab.id || "",
+            name: lab.name || "Unknown Lab",
+            section: lab.section || "Not Specified",
+            day_of_week: lab.day_of_week || "Monday", // Ensure day is valid
+            start_time: lab.start_time || "00:00:00",
+            end_time: lab.end_time || "00:00:00",
+            subject_name: subject.name || "Unknown Subject",
+            subject_code: subject.code || "",
+          });
+        }
+
+        console.log(`Formatted ${formattedLabs.length} labs from database`);
       }
 
-      console.log("All labs fetched:", allLabsData?.length || 0);
-      if (allLabsData && allLabsData.length > 0) {
-        console.log(
-          "Sample lab data:",
-          JSON.stringify(allLabsData[0], null, 2)
-        );
-      } else {
-        console.log("No labs found in database");
-      }
-
-      // Convert the labs to our format
-      const formattedLabs: Lab[] = [];
-
-      for (const lab of allLabsData || []) {
-        // Skip invalid labs or labs without subject
-        if (!lab || !lab.subjects) continue;
-
-        // Get the subject data
-        const subject = lab.subjects || {};
-
-        formattedLabs.push({
-          id: lab.id || "",
-          name: lab.name || "Unknown Lab",
-          section: lab.section || "",
-          day_of_week: lab.day_of_week || "Monday",
-          start_time: lab.start_time || "00:00:00",
-          end_time: lab.end_time || "00:00:00",
-          subject_name: subject.name || "Unknown Subject",
-          subject_code: subject.code || "",
-        });
-      }
-
-      console.log(`Formatted ${formattedLabs.length} labs`);
-
-      // Filter labs based on course and section with better comparison logic
+      // Filter labs based on course and section
       let filteredLabs = formattedLabs;
 
-      // Filter by course if specified - using multiple match strategies
-      if (studentCourse) {
+      // Filter by course if specified
+      if (studentCourse && formattedLabs.length > 0) {
         const formattedCourse = studentCourse.trim().toUpperCase();
-        // Create a temporary array to hold matches
-        let courseMatches = [];
 
-        // Strategy 1: Check if subject name contains the course name
-        const nameMatches = formattedLabs.filter((lab) =>
-          lab.subject_name.toUpperCase().includes(formattedCourse)
-        );
+        // Multiple strategies to match course
+        const courseMatches = formattedLabs.filter((lab) => {
+          const subjectName = lab.subject_name.toUpperCase();
+          const subjectCode = lab.subject_code.toUpperCase();
 
-        // Strategy 2: Check if course contains subject code
-        const codeMatches = formattedLabs.filter(
-          (lab) =>
-            lab.subject_code &&
-            (formattedCourse.includes(lab.subject_code.toUpperCase()) ||
-              lab.subject_code.toUpperCase().includes(formattedCourse))
-        );
-
-        // Combine unique labs from both strategies
-        courseMatches = [...new Set([...nameMatches, ...codeMatches])];
-
-        console.log(
-          `Found ${nameMatches.length} name matches and ${codeMatches.length} code matches`
-        );
+          return (
+            subjectName.includes(formattedCourse) ||
+            formattedCourse.includes(subjectName) ||
+            (subjectCode && subjectCode.includes(formattedCourse)) ||
+            (subjectCode && formattedCourse.includes(subjectCode))
+          );
+        });
 
         if (courseMatches.length > 0) {
           filteredLabs = courseMatches;
-          console.log(`After course filter: ${filteredLabs.length} labs`);
+          console.log(`After course filter: ${filteredLabs.length} labs match ${studentCourse}`);
         } else {
-          console.warn(`No labs match course: ${studentCourse}`);
+          console.log(`No labs match course: ${studentCourse}, keeping all labs`);
         }
       }
 
@@ -223,55 +240,68 @@ export default function Dashboard() {
           (lab) => lab.section === studentSection
         );
 
-        // If we found exact matches, use them, otherwise keep all matches from the course filter
+        // If we found exact matches, use them
         if (exactSectionMatch.length > 0) {
           filteredLabs = exactSectionMatch;
           console.log(
             `Found ${exactSectionMatch.length} labs with exact section match: ${studentSection}`
           );
         } else {
-          console.log(
-            `No labs with exact section: ${studentSection}, showing all course labs`
+          // Try partial section match if no exact matches
+          const partialSectionMatch = filteredLabs.filter(
+            (lab) => lab.section.includes(studentSection) || studentSection.includes(lab.section)
           );
+
+          if (partialSectionMatch.length > 0) {
+            filteredLabs = partialSectionMatch;
+            console.log(
+              `Found ${partialSectionMatch.length} labs with partial section match for: ${studentSection}`
+            );
+          } else {
+            console.log(
+              `No labs with section: ${studentSection}, showing all course matches`
+            );
+          }
         }
-        console.log(`After section filter: ${filteredLabs.length} labs`);
       }
 
-      // If no labs are found after filtering by course and we have a course specified,
-      // this means we couldn't find any subjects for this course
-      if (
-        filteredLabs.length === 0 &&
-        studentCourse &&
-        formattedLabs.length > 0
-      ) {
-        console.log(`No labs found for course: ${studentCourse}`);
+      // Sort labs by day and start time
+      filteredLabs.sort((a, b) => {
+        // First sort by day of week
+        const dayA = daysOrder.indexOf(a.day_of_week);
+        const dayB = daysOrder.indexOf(b.day_of_week);
+        if (dayA !== dayB) return dayA - dayB;
+
+        // Then sort by start time
+        return a.start_time.localeCompare(b.start_time);
+      });
+
+      console.log(
+        `Final result: ${filteredLabs.length} labs in schedule`
+      );
+
+      // Set the labs
+      setLabs(filteredLabs);
+
+      // If no labs found, show helpful message
+      if (filteredLabs.length === 0) {
         setModalConfig({
-          title: "Lab Schedule Information",
-          message: `We couldn't find any labs specifically for ${studentCourse}${
-            studentSection ? `, Section ${studentSection}` : ""
-          }. Showing all available labs instead.`,
+          title: "No Labs Found",
+          message:
+            "We couldn't find any labs in your schedule. Please contact your administrator if you believe this is an error.",
           type: "info",
         });
         setModalVisible(true);
-
-        // Show all labs instead
-        filteredLabs = formattedLabs;
       }
-
-      // Get today's labs
-      const todayLabs = filteredLabs.filter(
-        (lab) => lab.day_of_week === selectedDay
-      );
-
-      console.log(`Labs for ${selectedDay}: ${todayLabs.length}`);
-
-      // Sort labs by start time
-      todayLabs.sort((a, b) => a.start_time.localeCompare(b.start_time));
-
-      setLabs(todayLabs);
     } catch (error) {
       console.error("Error fetching labs:", error);
-      setLabs([]);
+      setModalConfig({
+        title: "Error Loading Schedule",
+        message:
+          "There was a problem loading your lab schedule. Please try refreshing or contact support if the issue persists.",
+        type: "error",
+      });
+      setModalVisible(true);
     } finally {
       setIsLoadingLabs(false);
     }

@@ -7,6 +7,10 @@ export interface UserProfile {
   student_id: string;
   course?: string;
   section?: string;
+  phone_number?: string;
+  address?: string;
+  emergency_contact?: string;
+  bio?: string;
   created_at: string;
   updated_at: string;
   lab_schedule?: Record<string, any[]>;
@@ -97,6 +101,10 @@ export class UserProfileService {
       student_id?: string;
       course?: string;
       section?: string;
+      phone_number?: string;
+      address?: string;
+      emergency_contact?: string;
+      bio?: string;
     };
   }): Promise<ProfileResponse> {
     try {
@@ -118,6 +126,10 @@ export class UserProfileService {
             student_id: userInfo.user_metadata?.student_id || "",
             course: userInfo.user_metadata?.course || null,
             section: userInfo.user_metadata?.section || null,
+            phone_number: userInfo.user_metadata?.phone_number || null,
+            address: userInfo.user_metadata?.address || null,
+            emergency_contact: userInfo.user_metadata?.emergency_contact || null,
+            bio: userInfo.user_metadata?.bio || null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -158,6 +170,11 @@ export class UserProfileService {
       full_name?: string;
       student_id?: string;
       course?: string;
+      section?: string;
+      phone_number?: string;
+      address?: string;
+      emergency_contact?: string;
+      bio?: string;
     };
   }): Promise<ProfileResponse> {
     try {

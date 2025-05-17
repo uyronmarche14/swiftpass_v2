@@ -17,6 +17,7 @@ import { Colors } from "../../constants/Colors";
 import { supabase } from "../../lib/supabase";
 import DropDownPicker from "react-native-dropdown-picker";
 import { router, useLocalSearchParams } from "expo-router";
+import { SectionService } from "../../lib/services/sectionService";
 
 // Course options
 const courseOptions = [
@@ -24,12 +25,7 @@ const courseOptions = [
   { label: "Bachelor of Science in Computer Science", value: "BSCS" },
 ];
 
-// Section options
-const sectionOptions = [
-  { label: "Section A2021", value: "A2021" },
-  { label: "Section B2021", value: "B2021" },
-  { label: "Section C2021", value: "C2021" },
-];
+// Section options will be loaded from the database
 
 export default function StudentsScreen() {
   const { isAdmin, isLoading, getAllStudents, getAllLabs } = useAuth();
@@ -49,6 +45,9 @@ export default function StudentsScreen() {
   const [openLabPicker, setOpenLabPicker] = useState(false);
   const [selectedLabId, setSelectedLabId] = useState<string | null>(null);
   const [studentLabs, setStudentLabs] = useState<any[]>([]);
+  
+  // Sections state
+  const [sectionOptions, setSectionOptions] = useState<{ label: string; value: string }[]>([]);
 
   // Dropdown state for filters
   const [openCoursePicker, setOpenCoursePicker] = useState(false);
@@ -83,6 +82,35 @@ export default function StudentsScreen() {
 
       const labsData = await getAllLabs();
       setLabs(labsData);
+      
+      // Load sections from the database
+      try {
+        const sectionsResult = await SectionService.getAllSections();
+        
+        if (sectionsResult.success && sectionsResult.data) {
+          const sectionsData = sectionsResult.data as any[];
+          const formattedSections = sectionsData.map(section => ({
+            label: section.name,
+            value: section.code
+          }));
+          setSectionOptions(formattedSections);
+        } else {
+          // Fallback to hardcoded sections if there's an error
+          setSectionOptions([
+            { label: "Section A2021", value: "A2021" },
+            { label: "Section B2021", value: "B2021" },
+            { label: "Section C2021", value: "C2021" },
+          ]);
+        }
+      } catch (sectionsError) {
+        console.error("Error loading sections:", sectionsError);
+        // Fallback to hardcoded sections if there's an error
+        setSectionOptions([
+          { label: "Section A2021", value: "A2021" },
+          { label: "Section B2021", value: "B2021" },
+          { label: "Section C2021", value: "C2021" },
+        ]);
+      }
     } catch (error) {
       console.error("Error loading students data:", error);
     } finally {

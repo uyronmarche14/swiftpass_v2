@@ -17,13 +17,9 @@ import { Colors } from "../../constants/Colors";
 import { supabase } from "../../lib/supabase";
 import DropDownPicker from "react-native-dropdown-picker";
 import { router } from "expo-router";
+import { SectionService } from "../../lib/services/sectionService";
 
-// Hardcoded section options
-const sectionOptions = [
-  { label: "Section A2021", value: "A2021" },
-  { label: "Section B2021", value: "B2021" },
-  { label: "Section C2021", value: "C2021" },
-];
+// Section options will be loaded from the database
 
 export default function LabsScreen() {
   const { isAdmin, isLoading, getAllLabs } = useAuth();
@@ -39,6 +35,9 @@ export default function LabsScreen() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+
+  // Sections state
+  const [sectionOptions, setSectionOptions] = useState<{ label: string; value: string }[]>([]);
 
   // Dropdown state
   const [openDayPicker, setOpenDayPicker] = useState(false);
@@ -73,6 +72,35 @@ export default function LabsScreen() {
 
       if (subjectsError) throw subjectsError;
       setSubjects(subjectsData || []);
+      
+      // Load sections from the database using SectionService
+      try {
+        const sectionsResult = await SectionService.getAllSections();
+        
+        if (sectionsResult.success && sectionsResult.data) {
+          const sectionsData = sectionsResult.data as any[];
+          const formattedSections = sectionsData.map(section => ({
+            label: section.name,
+            value: section.code
+          }));
+          setSectionOptions(formattedSections);
+        } else {
+          // Fallback to hardcoded sections if there's an error
+          setSectionOptions([
+            { label: "Section A2021", value: "A2021" },
+            { label: "Section B2021", value: "B2021" },
+            { label: "Section C2021", value: "C2021" },
+          ]);
+        }
+      } catch (sectionsError) {
+        console.error("Error loading sections:", sectionsError);
+        // Fallback to hardcoded sections if there's an error
+        setSectionOptions([
+          { label: "Section A2021", value: "A2021" },
+          { label: "Section B2021", value: "B2021" },
+          { label: "Section C2021", value: "C2021" },
+        ]);
+      }
     } catch (error) {
       console.error("Error loading labs data:", error);
     } finally {
@@ -125,7 +153,7 @@ export default function LabsScreen() {
     try {
       Alert.alert(
         "Remove Lab",
-        "Are you sure you want to remove this lab? This will also remove all associated student enrollments.",
+        "Are you sure you want to remove this lab? This will also remove all associated student enrollments and attendance records.",
         [
           {
             text: "Cancel",

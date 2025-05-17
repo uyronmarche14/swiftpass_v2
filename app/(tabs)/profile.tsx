@@ -7,28 +7,34 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "../../constants/Colors";
 import { CustomModal } from "../../components/ui/Modal";
+import EditProfileModal from "../../components/ui/EditProfileModal";
+import { SectionService } from "../../lib/services/sectionService";
+import { supabase } from "../../lib/supabase";
 
 export default function Profile() {
-  const { user, logout, isLoading, userProfile } = useAuth();
+  const { user, logout, isLoading, userProfile, updateProfile } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfig, setModalConfig] = useState({
     title: "",
     message: "",
     type: "info" as "error" | "success" | "warning" | "info",
   });
+  const [isEditProfileModalVisible, setIsEditProfileModalVisible] = useState(false);
+  const [sections, setSections] = useState<Array<{label: string, value: string}>>([]);
+  const [courses, setCourses] = useState<Array<{label: string, value: string}>>([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(false);
 
   useEffect(() => {
+    // Load sections and courses when component mounts
+    loadFormOptions();
+    
     // Debug log the lab schedule info
-    console.log(
-      "Profile - userProfile lab_schedule:",
-      userProfile?.lab_schedule
-    );
-
     if (userProfile?.lab_schedule) {
       const scheduleKeys = Object.keys(userProfile.lab_schedule);
       console.log("Lab schedule days:", scheduleKeys);
@@ -41,6 +47,47 @@ export default function Profile() {
       console.log("No lab schedule available in userProfile");
     }
   }, [userProfile]);
+  
+  // Load section options from database
+  const loadFormOptions = async () => {
+    setIsLoadingOptions(true);
+    try {
+      // Load sections from SectionService
+      const sectionsResponse = await SectionService.getAllSections();
+      if (sectionsResponse.success && sectionsResponse.data) {
+        // Ensure we have an array by handling both single item and array cases
+        const sectionsArray = Array.isArray(sectionsResponse.data) 
+          ? sectionsResponse.data 
+          : [sectionsResponse.data];
+          
+        const sectionOptions = sectionsArray.map((section: any) => ({
+          label: section.name,
+          value: section.code
+        }));
+        setSections(sectionOptions);
+        console.log("Loaded sections for profile edit:", sectionOptions.length);
+      }
+      
+      // Load courses from subjects table
+      const { data: subjectsData, error: subjectsError } = await supabase
+        .from("subjects")
+        .select("*")
+        .order("name");
+        
+      if (!subjectsError && subjectsData) {
+        const courseOptions = subjectsData.map(subject => ({
+          label: subject.name,
+          value: subject.name
+        }));
+        setCourses(courseOptions);
+        console.log("Loaded courses for profile edit:", courseOptions.length);
+      }
+    } catch (error) {
+      console.error("Error loading form options:", error);
+    } finally {
+      setIsLoadingOptions(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -52,6 +99,47 @@ export default function Profile() {
         type: "error",
       });
       setModalVisible(true);
+    }
+  };
+
+  const handleEditProfile = () => {
+    // Make sure options are loaded before showing the modal
+    if (sections.length === 0 || courses.length === 0) {
+      loadFormOptions();
+    }
+    setIsEditProfileModalVisible(true);
+  };
+
+  const handleSaveProfile = async (profileData: any) => {
+    try {
+      const success = await updateProfile(profileData);
+      
+      if (success) {
+        setModalConfig({
+          title: "Success",
+          message: "Your profile has been updated successfully.",
+          type: "success",
+        });
+        setModalVisible(true);
+        return true;
+      } else {
+        setModalConfig({
+          title: "Error",
+          message: "Failed to update profile. Please try again.",
+          type: "error",
+        });
+        setModalVisible(true);
+        return false;
+      }
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      setModalConfig({
+        title: "Error",
+        message: "An unexpected error occurred. Please try again.",
+        type: "error",
+      });
+      setModalVisible(true);
+      return false;
     }
   };
 
@@ -76,6 +164,14 @@ export default function Profile() {
         </View>
         <Text style={styles.name}>{user?.full_name || "Student"}</Text>
         <Text style={styles.course}>{user?.course || "Course"}</Text>
+        
+        <TouchableOpacity 
+          style={styles.editButton}
+          onPress={handleEditProfile}
+        >
+          <Ionicons name="pencil" size={16} color="#fff" />
+          <Text style={styles.editButtonText}>Edit Profile</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -91,8 +187,35 @@ export default function Profile() {
               {user?.student_id || "Student ID"}
             </Text>
           </View>
+          {user?.phone_number && (
+            <View style={styles.infoRow}>
+              <Ionicons name="call" size={20} color={Colors.light.primary} />
+              <Text style={styles.infoText}>{user.phone_number}</Text>
+            </View>
+          )}
+          {user?.address && (
+            <View style={styles.infoRow}>
+              <Ionicons name="home" size={20} color={Colors.light.primary} />
+              <Text style={styles.infoText}>{user.address}</Text>
+            </View>
+          )}
+          {user?.emergency_contact && (
+            <View style={styles.infoRow}>
+              <Ionicons name="medkit" size={20} color={Colors.light.primary} />
+              <Text style={styles.infoText}>{user.emergency_contact}</Text>
+            </View>
+          )}
         </View>
       </View>
+      
+      {user?.bio && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>About Me</Text>
+          <View style={styles.card}>
+            <Text style={styles.bioText}>{user.bio}</Text>
+          </View>
+        </View>
+      )}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Lab Schedule</Text>
@@ -139,6 +262,24 @@ export default function Profile() {
         message={modalConfig.message}
         type={modalConfig.type}
       />
+      
+      <EditProfileModal
+        visible={isEditProfileModalVisible}
+        onClose={() => setIsEditProfileModalVisible(false)}
+        initialData={{
+          full_name: userProfile?.full_name || '',
+          student_id: userProfile?.student_id || '',
+          course: userProfile?.course || '',
+          section: userProfile?.section || '',
+          phone_number: userProfile?.phone_number || '',
+          address: userProfile?.address || '',
+          emergency_contact: userProfile?.emergency_contact || '',
+          bio: userProfile?.bio || ''
+        }}
+        onSave={handleSaveProfile}
+        courseOptions={courses}
+        sectionOptions={sections}
+      />
     </ScrollView>
   );
 }
@@ -159,6 +300,21 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.background,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.border,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.light.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    marginTop: 12,
+  },
+  editButtonText: {
+    color: '#fff',
+    fontWeight: '500',
+    fontSize: 14,
+    marginLeft: 4,
   },
   profileImageContainer: {
     width: 100,
@@ -225,6 +381,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.light.text,
     marginLeft: 12,
+    flex: 1,
+  },
+  bioText: {
+    fontSize: 15,
+    color: Colors.light.text,
+    lineHeight: 22,
   },
   scheduleRow: {
     flexDirection: "row",

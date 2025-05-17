@@ -11,6 +11,11 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { supabase } from "../../lib/supabase";
+import { Platform } from "react-native";
+
+// Use environment variable for API URL with more robust fallback
+const API_URL = process.env.EXPO_PUBLIC_API_URL ||
+  (Platform.OS === "android" ? "http://10.0.2.2:5000/api" : "http://localhost:5000/api");
 
 interface ScanResult {
   userId?: string;
@@ -357,8 +362,8 @@ const QRScanner = () => {
         return;
       }
 
-      // 8. Record attendance
-      const { error: attendanceError } = await supabase
+      // 8. Record attendance in Supabase
+      const { data: attendanceData, error: attendanceError } = await supabase
         .from("attendance")
         .insert([
           {
@@ -366,7 +371,38 @@ const QRScanner = () => {
             lab_id: labId,
             time_in: now.toISOString(),
           },
-        ]);
+        ])
+        .select()
+        .single();
+        
+      // Also send attendance data to Express backend
+      try {
+        console.log("Sending attendance data to Express backend...");
+        const response = await fetch(`${API_URL}/attendance/record`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            attendanceId: attendanceData?.id || null,
+            studentId: studentId,
+            labId: labId,
+            studentName: studentData.full_name,
+            labName: labData.name,
+            subjectName: labData.subjects?.name || "Unknown Subject",
+            timeIn: now.toISOString(),
+            day: currentDay,
+          }),
+        });
+        
+        if (!response.ok) {
+          console.warn("Express backend attendance recording failed, but Supabase record succeeded");
+        } else {
+          console.log("Attendance recorded in Express backend successfully");
+        }
+      } catch (expressError) {
+        console.warn("Express backend unavailable for attendance recording:", expressError);
+      }
 
       if (attendanceError) {
         console.error("Error recording attendance:", attendanceError);
