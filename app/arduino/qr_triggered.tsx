@@ -39,7 +39,53 @@ export default function ESP32Control() {
   const [isLoading, setIsLoading] = useState(false);
   const [facing, setFacing] = useState<"front" | "back">("back");
   const [permission, requestPermission] = useCameraPermissions();
+  const [networkStatus, setNetworkStatus] = useState<"idle" | "testing" | "connected" | "error">("idle");
   const { userProfile } = useAuth();
+  
+  // Test connection to the ESP32
+  const testConnection = async () => {
+    if (!ipAddress || ipAddress.trim() === "") {
+      Alert.alert("Error", "Please enter a valid IP address");
+      return;
+    }
+    
+    try {
+      setNetworkStatus("testing");
+      const sanitizedIp = ipAddress.trim();
+      console.log(`Testing connection to ESP32 at http://${sanitizedIp}/status`);
+      
+      // Set timeout to avoid long waits
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(`http://${sanitizedIp}/status`, {
+        method: "GET",
+        headers: {
+          "Accept": "application/json",
+          "Connection": "close",
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log("ESP32 status:", data);
+        setNetworkStatus("connected");
+        Alert.alert("Connection Successful", `Successfully connected to ESP32 at ${sanitizedIp}`);
+      } else {
+        throw new Error(`Failed with status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Connection test failed:", error);
+      setNetworkStatus("error");
+      Alert.alert(
+        "Connection Failed", 
+        "Could not connect to the ESP32. Please check the IP address and ensure your phone is on the same network.\n\nTip: If you are using a production build, make sure it has permission to access the network."
+      );
+    }
+  };
 
   // Handle QR code scan
   const handleScan = async ({ data }: { data: string }) => {
@@ -213,13 +259,31 @@ export default function ESP32Control() {
   const signalAccessGranted = async (deviceIp: string) => {
     try {
       console.log("Sending access granted signal to ESP32");
-      const response = await fetch(`http://${deviceIp}/scan`, {
+      // Make sure IP address is valid before making the request
+      if (!deviceIp || deviceIp.trim() === "") {
+        throw new Error("Invalid IP address");
+      }
+      
+      // Ensure proper format for IP address
+      const sanitizedIp = deviceIp.trim();
+      console.log(`Connecting to ESP32 at http://${sanitizedIp}/scan`);
+      
+      // Set timeout to avoid long waits
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(`http://${sanitizedIp}/scan`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Connection": "close", // Helps with some network issues
+          "Accept": "application/json",
         },
         body: JSON.stringify({ qrcode: "ACCESS123" }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         console.log("Access granted signal sent successfully");
@@ -247,13 +311,31 @@ export default function ESP32Control() {
   const signalAccessDenied = async (deviceIp: string) => {
     try {
       console.log("Sending access denied signal to ESP32");
-      const response = await fetch(`http://${deviceIp}/scan`, {
+      // Make sure IP address is valid before making the request
+      if (!deviceIp || deviceIp.trim() === "") {
+        throw new Error("Invalid IP address");
+      }
+      
+      // Ensure proper format for IP address
+      const sanitizedIp = deviceIp.trim();
+      console.log(`Connecting to ESP32 at http://${sanitizedIp}/scan`);
+      
+      // Set timeout to avoid long waits
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(`http://${sanitizedIp}/scan`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Connection": "close", // Helps with some network issues
+          "Accept": "application/json",
         },
         body: JSON.stringify({ qrcode: "INVALID" }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         console.log("Access denied signal sent successfully");

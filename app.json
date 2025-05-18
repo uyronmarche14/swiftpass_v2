@@ -18,9 +18,14 @@
       },
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
       ],
-      "package": "com.ronmarche201114.labpass"
+      "package": "com.ronmarche201114.labpass",
+      "config": {
+        "networkSecurityConfig": "./assets/network_security_config.xml"
+      }
     },
     "web": {
       "bundler": "metro",
