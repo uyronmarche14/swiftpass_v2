@@ -1,27 +1,26 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { router } from "expo-router";
-import { Alert, Platform } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "../lib/supabase";
-import { AuthService } from "../lib/services/authService";
-import {
-  UserProfileService,
-  UserProfile as BaseUserProfile,
-} from "../lib/services/userProfileService";
+/**
+ * AuthContext.tsx
+ * 
+ * This file now uses the modular auth context structure located in the auth/ directory.
+ * It re-exports the components and hooks to maintain backward compatibility with
+ * existing code that imports from this file.
+ * 
+ * The original functionality has been split into multiple files:
+ * - auth/types.ts: Type definitions
+ * - auth/AuthContext.ts: Context definition
+ * - auth/AuthProvider.tsx: Provider component
+ * - auth/userAuthService.ts: User authentication functions
+ * - auth/adminService.ts: Admin operations
+ * - auth/qrCodeService.ts: QR code generation
+ * - auth/index.ts: Re-exports everything
+ */
 
-// Extended user profile with additional properties
-interface UserProfile extends BaseUserProfile {
-  role?: string;
-}
+// Import and re-export from the modular structure
+export { AuthProvider, useAuth } from "./auth";
 
-interface AdminProfile {
-  id: string;
-  email: string;
-  full_name: string;
-  role: string;
-  created_at: string;
-  updated_at: string;
-}
+// Export types if needed elsewhere
+export { UserProfile, AdminProfile, AuthContextType, Lab, Subject, EnrolledLabInfo } from "./auth/types";
+
 
 // Define types for better clarity
 interface Subject {
@@ -125,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (storedAdminProfile) {
           try {
             const adminProfileData = JSON.parse(storedAdminProfile);
-            setAdminProfile(adminProfileData);
+            setAdminProfile(adminProfileData)s;
             console.log(`Admin profile restored: ${adminProfileData.full_name}`);
           } catch (parseError) {
             console.error("Error parsing admin profile:", parseError);
@@ -240,9 +239,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       // Special check for faculty email patterns if no explicit role is found
-      const email = user?.email || '';
-      // We've ensured email is a string now
-      if (email && !email.includes('@swiftpass.edu')) {
+      const email = user?.email;
+      if (email && typeof email === 'string' && !email.includes('@swiftpass.edu')) {
         // Faculty accounts typically don't have @swiftpass.edu domain
         const potentialFacultyPattern = /^[a-z]\.[a-z]+$/i;  // pattern like d.abesamis
         if (potentialFacultyPattern.test(email)) {
@@ -369,28 +367,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
               if (matchingSubjects.length > 0) {
                 const subjectIds = matchingSubjects.map((s) => s.id);
-
-                // Attempt to create the profile
-                const { data: profileData, error: profileError } = await supabase
-                  .from('students')
-                  .insert({
-                    id: userId,
-                    email: response.data.email,
-                    full_name: response.data.full_name || 'Unknown',
-                    student_id: response.data.student_id || 'Not Assigned',
-                    course: response.data.course || null,
-                    section: response.data.section || null,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                  })
-                  .select()
-                  .single();
-
-                if (profileError) {
-                  console.error("Error creating profile:", profileError);
-                } else {
-                  console.log("Profile created successfully:", profileData);
-                }
 
                 // Find all labs for these subjects
                 const { data: matchingLabs } = await supabase
@@ -562,25 +538,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(response.data.user);
       setIsAuthenticated(true);
-      
-      // Fetch user profile and determine role before routing
       await fetchUserProfile(response.data.user.id);
-      
-      // Check for admin role in user metadata
-      const isUserAdmin = response.data.user?.app_metadata?.role === 'admin' || 
-                         response.data.user?.user_metadata?.role === 'admin' ||
-                         response.data.user?.email === 'admin@swiftpass.edu';
-      
-      // Also check if we have an admin profile
-      if (isUserAdmin || adminProfile) {
-        // Set admin status
-        setIsAdmin(true);
-        await AsyncStorage.setItem("isAdmin", "true");
-        
-        // Route to admin dashboard
+
+      // Route based on user role
+      if (isAdmin) {
         router.replace("/admin" as any);
       } else {
-        // Regular user - route to dashboard
         router.replace("/(tabs)/dashboard");
       }
 
@@ -610,40 +573,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
 
-      // First clear state to immediately update UI
+      const response = await AuthService.logout();
+
+      if (!response.success) {
+        throw new Error(response.error || "Logout failed");
+      }
+
+      // Clear all user states
       setIsAuthenticated(false);
       setUser(null);
       setUserProfile(null);
+      
+      // Also clear admin states
       setIsAdmin(false);
       setAdminProfile(null);
 
-      // Then call Supabase logout
-      const response = await AuthService.logout();
-      if (!response.success) {
-        console.warn("Supabase logout had issues:", response.error);
-        // Continue with local logout even if Supabase logout fails
-      }
-
       // Remove all stored user data
-      const keysToRemove = [
-        "user", 
-        "userProfile", 
-        "session", 
-        "adminProfile", 
-        "isAdmin"
-      ];
+      await AsyncStorage.removeItem("user");
+      await AsyncStorage.removeItem("userProfile");
+      await AsyncStorage.removeItem("session");
       
-      await Promise.all(
-        keysToRemove.map(key => AsyncStorage.removeItem(key))
-      );
+      // Remove admin-specific data
+      await AsyncStorage.removeItem("adminProfile");
+      await AsyncStorage.removeItem("isAdmin");
       
       console.log("Logout successful - all user and admin data cleared");
 
-      // Redirect to login screen with a slight delay to ensure state is cleared
-      setTimeout(() => {
-        router.replace("/login");
-      }, 100);
-      
+      router.replace("/login");
       return true;
     } catch (error: any) {
       console.error("Logout error:", error);
@@ -1289,9 +1245,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let finalQrData: any = {};
 
       if (qrError) {
-        // Handle creation of new QR code - safely cast the error to access code property
-        const errorObj = qrError as { code?: string, message?: string };
-        if (errorObj.code === "PGRST116" && userProfile) {
+        // Handle creation of new QR code
+        if ((qrError as { code: string }).code === "PGRST116" && userProfile) {
           const success = await createUserQRCode(
             user.id,
             userProfile.full_name,
@@ -1415,74 +1370,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const adminLogin = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      console.log("Attempting admin login for:", email);
 
-      // First attempt to use Supabase authentication
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email,
-          password: password,
-        });
-
-        if (!error && data && data.user) {
-          console.log("Admin login via Supabase auth successful");
-          
-          // Check if this user is actually an admin in our system
-          const isAdminUser = 
-            data.user.email === 'admin@swiftpass.edu' || 
-            data.user.app_metadata?.role === 'admin' || 
-            data.user.user_metadata?.role === 'admin' || 
-            data.user.user_metadata?.role === 'faculty_admin' || 
-            data.user.user_metadata?.role === 'super_admin';
-          
-          if (isAdminUser) {
-            // Store session and user data
-            await Promise.all([
-              AsyncStorage.setItem("user", JSON.stringify(data.user)),
-              AsyncStorage.setItem("session", JSON.stringify(data.session)),
-            ]);
-
-            setUser(data.user);
-            setIsAuthenticated(true);
-            setIsAdmin(true);
-            await AsyncStorage.setItem("isAdmin", "true");
-            
-            // Check if admin profile exists in database
-            const { data: adminData, error: adminError } = await supabase
-              .from("admins")
-              .select("*")
-              .eq("id", data.user.id)
-              .single();
-            
-            if (!adminError && adminData) {
-              // Set the admin profile from database
-              setAdminProfile(adminData);
-              await AsyncStorage.setItem("adminProfile", JSON.stringify(adminData));
-            } else {
-              // Create a fallback profile
-              const profile = {
-                id: data.user.id,
-                email: data.user.email || '',
-                full_name: data.user.user_metadata?.full_name || 'Administrator',
-                role: data.user.user_metadata?.role || 'admin',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              };
-              
-              setAdminProfile(profile);
-              await AsyncStorage.setItem("adminProfile", JSON.stringify(profile));
-            }
-            
-            // Redirect to admin dashboard
-            router.replace("/admin" as any);
-            return true;
-          }
-        }
-      } catch (supabaseError) {
-        console.warn("Supabase auth failed, falling back to local admin checks:", supabaseError);
-      }
-
-      // Define faculty admin accounts (fallback mechanism if Supabase auth fails)
+      // Define faculty admin accounts
       const facultyAccounts = [
         // Super admin account
         {
@@ -1491,7 +1380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           fullName: "System Administrator",
           role: "super_admin"
         },
-        // Faculty accounts (simplified list to save space)
+        // Faculty accounts
         {
           username: "d.abesamis",
           password: "Abes@2025Dr!",
@@ -1502,6 +1391,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           username: "m.reyes",
           password: "Reyes@2025En!",
           fullName: "Engr. Maria Joy Reyes",
+          role: "faculty_admin"
+        },
+        {
+          username: "a.zantua",
+          password: "Zantua@2025En!",
+          fullName: "Engr. Apollo Zantua",
+          role: "faculty_admin"
+        },
+        {
+          username: "r.general",
+          password: "General@2025En!",
+          fullName: "Engr. Rico General",
+          role: "faculty_admin"
+        },
+        {
+          username: "f.morallo",
+          password: "Morallo@2025En!",
+          fullName: "Engr. Fenwill Morallo",
+          role: "faculty_admin"
+        },
+        {
+          username: "j.villarino",
+          password: "Villarino@25En!",
+          fullName: "Engr. John Renor Villarino",
+          role: "faculty_admin"
+        },
+        {
+          username: "c.aston",
+          password: "Aston@2025En!",
+          fullName: "Engr. Carmen Aston",
+          role: "faculty_admin"
+        },
+        {
+          username: "m.basilio",
+          password: "Basilio@2025Ms!",
+          fullName: "Mrs. Mary Ann Basilio",
+          role: "faculty_admin"
+        },
+        {
+          username: "e.pepito",
+          password: "Pepito@2025Dr!\\",
+          fullName: "Dr. Esterlina Pepito",
           role: "faculty_admin"
         }
       ];
@@ -1520,59 +1451,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
 
       if (adminAccount) {
-        console.log(`Admin login via fallback mechanism: ${adminAccount.fullName}`);
+        console.log(`Admin login: ${adminAccount.fullName}`);
 
-        // Generate consistent unique ID for this admin
-        const adminId = adminAccount.username === "admin@swiftpass.edu" 
-          ? "admin-special-id" 
-          : `faculty-${adminAccount.username}`;
-        
-        const emailToUse = adminAccount.username.includes('@') 
-          ? adminAccount.username 
-          : `${adminAccount.username}@swiftpass.edu`;
+        try {
+          // First try normal login in case account is already in Supabase
+          const emailToUse = adminAccount.username.includes('@') 
+            ? adminAccount.username 
+            : `${adminAccount.username}@swiftpass.edu`;
+            
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: emailToUse,
+            password: adminAccount.password,
+          });
 
-        // Create admin user object
-        const adminUser = {
-          id: adminId,
-          email: emailToUse,
-          user_metadata: {
+          if (!error && data && data.user) {
+            console.log("Admin login successful via normal auth flow");
+
+            // Store session and user data
+            await Promise.all([
+              AsyncStorage.setItem("user", JSON.stringify(data.user)),
+              AsyncStorage.setItem("session", JSON.stringify(data.session)),
+            ]);
+
+            setUser(data.user);
+            setIsAuthenticated(true);
+            await fetchUserProfile(data.user.id);
+
+            router.replace("/admin" as any);
+            return true;
+          }
+
+          // If normal login failed, create special admin session
+          console.log("Creating special admin session");
+
+          // Generate consistent unique ID for this admin
+          const adminId = adminAccount.username === "admin@swiftpass.edu" 
+            ? "admin-special-id" 
+            : `faculty-${adminAccount.username}`;
+          
+          // Create admin user object
+          const adminUser = {
+            id: adminId,
+            email: emailToUse,
+            user_metadata: {
+              full_name: adminAccount.fullName,
+              role: adminAccount.role,
+            },
+            app_metadata: {
+              role: adminAccount.role,
+            },
+          };
+
+          // Create admin profile
+          const profile = {
+            id: adminId,
+            email: emailToUse,
             full_name: adminAccount.fullName,
             role: adminAccount.role,
-          },
-          app_metadata: {
-            role: adminAccount.role,
-          },
-        };
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
 
-        // Create admin profile
-        const profile = {
-          id: adminId,
-          email: emailToUse,
-          full_name: adminAccount.fullName,
-          role: adminAccount.role,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
+          // Set authentication state
+          await AsyncStorage.setItem("user", JSON.stringify(adminUser));
+          await AsyncStorage.setItem("adminProfile", JSON.stringify(profile));
+          await AsyncStorage.setItem("isAdmin", "true");
 
-        // Set authentication state
-        await AsyncStorage.setItem("user", JSON.stringify(adminUser));
-        await AsyncStorage.setItem("adminProfile", JSON.stringify(profile));
-        await AsyncStorage.setItem("isAdmin", "true");
+          // Set local state
+          setUser(adminUser);
+          setAdminProfile(profile);
+          setIsAdmin(true);
+          setIsAuthenticated(true);
 
-        // Set local state
-        setUser(adminUser);
-        setAdminProfile(profile);
-        setIsAdmin(true);
-        setIsAuthenticated(true);
-
-        // Navigate to admin dashboard
-        router.replace("/admin" as any);
-        return true;
+          // Navigate to admin dashboard
+          router.replace("/admin" as any);
+          return true;
+        } catch (error) {
+          console.error("Admin login flow failed:", error);
+          throw new Error("Admin login failed");
+        }
+      } else {
+        throw new Error("Invalid admin credentials");
       }
-      
-      // If we got here, no admin authentication method succeeded
-      throw new Error("Invalid admin credentials");
-    
     } catch (error: unknown) {
       console.error("Admin login error:", error);
 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   StyleSheet,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { router } from "expo-router";
 import { Colors } from "../constants/Colors";
@@ -15,6 +16,8 @@ import { CustomInput } from "../components/ui/CustomInput";
 import { useAuth } from "../context/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
 import DropDownPicker from "react-native-dropdown-picker";
+import { CourseService, Course } from "../lib/services/courseService";
+import { SectionService, Section } from "../lib/services/sectionService";
 
 interface FormData {
   fullName: string;
@@ -35,22 +38,11 @@ interface FormErrors {
   course?: string;
   section?: string;
 }
-
-// Hardcoded course options with full names
-const courseOptions = [
-  {
-    label: "Bachelor of Science in Information Technology (BSIT)",
-    value: "BSIT",
-  },
-  { label: "Bachelor of Science in Computer Science (BSCS)", value: "BSCS" },
-];
-
-// Hardcoded section options
-const sectionOptions = [
-  { label: "Section A2021", value: "A2021" },
-  { label: "Section B2021", value: "B2021" },
-  { label: "Section C2021", value: "C2021" },
-];
+// Definition of dropdown option type
+interface DropdownOption {
+  label: string;
+  value: string;
+}
 
 export default function Register() {
   const { register, isLoading } = useAuth();
@@ -70,6 +62,73 @@ export default function Register() {
   // State for dropdowns
   const [openCourseDropdown, setOpenCourseDropdown] = useState(false);
   const [openSectionDropdown, setOpenSectionDropdown] = useState(false);
+  
+  // State for dynamic dropdown options
+  const [courseOptions, setCourseOptions] = useState<DropdownOption[]>([]);
+  const [sectionOptions, setSectionOptions] = useState<DropdownOption[]>([]);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(true);
+  const [isLoadingSections, setIsLoadingSections] = useState(true);
+  const [loadingError, setLoadingError] = useState("");
+  
+  // Load courses and sections when component mounts
+  useEffect(() => {
+    fetchCourses();
+    fetchSections();
+  }, []);
+  
+  // Fetch courses from backend
+  const fetchCourses = async () => {
+    try {
+      setIsLoadingCourses(true);
+      const response = await CourseService.getAllCourses();
+      
+      if (response.success && response.data) {
+        // Convert courses to dropdown options format
+        const courses = Array.isArray(response.data) ? response.data : [response.data];
+        const options = courses.map(course => ({
+          label: `${course.name} (${course.code})`,
+          value: course.code
+        }));
+        
+        setCourseOptions(options);
+      } else {
+        console.error("Failed to load courses:", response.error);
+        setLoadingError("Failed to load courses. Please try again later.");
+      }
+    } catch (error) {
+      console.error("Error fetching courses:", error);
+      setLoadingError("Failed to load courses. Please check your connection.");
+    } finally {
+      setIsLoadingCourses(false);
+    }
+  };
+  
+  // Fetch sections from backend
+  const fetchSections = async () => {
+    try {
+      setIsLoadingSections(true);
+      const response = await SectionService.getAllSections();
+      
+      if (response.success && response.data) {
+        // Convert sections to dropdown options format
+        const sections = Array.isArray(response.data) ? response.data : [response.data];
+        const options = sections.map(section => ({
+          label: `${section.name} (${section.code})`,
+          value: section.code
+        }));
+        
+        setSectionOptions(options);
+      } else {
+        console.error("Failed to load sections:", response.error);
+        setLoadingError("Failed to load sections. Please try again later.");
+      }
+    } catch (error) {
+      console.error("Error fetching sections:", error);
+      setLoadingError("Failed to load sections. Please check your connection.");
+    } finally {
+      setIsLoadingSections(false);
+    }
+  };
 
   const validateForm = (): FormErrors => {
     const newErrors: FormErrors = {};
@@ -159,18 +218,39 @@ export default function Register() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContainer}>
-      <View style={styles.container}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={24} color={Colors.light.text} />
-        </TouchableOpacity>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={true}
+      >
+        <View style={styles.container}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Ionicons name="chevron-back" size={28} color={Colors.light.text} />
+          </TouchableOpacity>
 
-        <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.subtitle}>
-          Register to access your attendance QR code
-        </Text>
+          <Text style={styles.title}>Create Account</Text>
+          <Text style={styles.subtitle}>Sign up to manage your profile</Text>
+          
+          {loadingError ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorMessage}>{loadingError}</Text>
+              <TouchableOpacity 
+                style={styles.retryButton}
+                onPress={() => {
+                  setLoadingError("");
+                  fetchCourses();
+                  fetchSections();
+                }}
+              >
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
-        <View style={styles.formContainer}>
+          <View style={styles.formContainer}>
           <CustomInput
             label="Full Name"
             value={formData.fullName}
@@ -204,25 +284,33 @@ export default function Register() {
           />
 
           <Text style={styles.label}>Course</Text>
-          <DropDownPicker
-            open={openCourseDropdown}
-            value={formData.course}
-            items={courseOptions}
-            setOpen={setOpenCourseDropdown}
-            setValue={(value) => {
-              if (typeof value === "function") {
-                const newValue = value(formData.course);
-                setFormData({ ...formData, course: newValue });
-              } else {
+          {isLoadingCourses ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={Colors.light.primary} />
+              <Text style={styles.loadingText}>Loading courses...</Text>
+            </View>
+          ) : (
+            <DropDownPicker
+              open={openCourseDropdown}
+              value={formData.course}
+              items={courseOptions}
+              setOpen={setOpenCourseDropdown}
+              setValue={(callback) => {
+                const value = callback(formData.course);
                 setFormData({ ...formData, course: value });
-              }
-            }}
-            style={styles.dropdown}
-            dropDownContainerStyle={styles.dropdownContainer}
-            placeholder="Select your course"
-            zIndex={3000}
-            zIndexInverse={1000}
-          />
+              }}
+              placeholder="Select your course"
+              style={[styles.dropdown, errors.course ? styles.inputError : null]}
+              dropDownContainerStyle={styles.dropdownContainer}
+              zIndex={3000}
+              zIndexInverse={1000}
+              listMode="SCROLLVIEW"
+              scrollViewProps={{
+                nestedScrollEnabled: true,
+              }}
+              maxHeight={200}
+            />
+          )}
           {errors.course ? (
             <Text style={styles.errorText}>{errors.course}</Text>
           ) : null}
@@ -232,25 +320,36 @@ export default function Register() {
           >
             Section
           </Text>
-          <DropDownPicker
-            open={openSectionDropdown}
-            value={formData.section}
-            items={sectionOptions}
-            setOpen={setOpenSectionDropdown}
-            setValue={(value) => {
-              if (typeof value === "function") {
-                const newValue = value(formData.section);
-                setFormData({ ...formData, section: newValue });
-              } else {
+          {isLoadingSections ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={Colors.light.primary} />
+              <Text style={styles.loadingText}>Loading sections...</Text>
+            </View>
+          ) : (
+            <DropDownPicker
+              open={openSectionDropdown}
+              value={formData.section}
+              items={sectionOptions}
+              setOpen={setOpenSectionDropdown}
+              setValue={(callback) => {
+                const value = callback(formData.section);
                 setFormData({ ...formData, section: value });
-              }
-            }}
-            style={styles.dropdown}
-            dropDownContainerStyle={styles.dropdownContainer}
-            placeholder="Select your section"
-            zIndex={2000}
-            zIndexInverse={2000}
-          />
+              }}
+              placeholder="Select your section"
+              style={[
+                styles.dropdown,
+                errors.section ? styles.inputError : null,
+              ]}
+              dropDownContainerStyle={styles.dropdownContainer}
+              zIndex={2000}
+              zIndexInverse={2000}
+              listMode="SCROLLVIEW"
+              scrollViewProps={{
+                nestedScrollEnabled: true,
+              }}
+              maxHeight={200}
+            />
+          )}
           {errors.section ? (
             <Text style={styles.errorText}>{errors.section}</Text>
           ) : null}
@@ -319,6 +418,7 @@ export default function Register() {
         </View>
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -402,5 +502,43 @@ const styles = StyleSheet.create({
   signInLink: {
     color: Colors.light.primary,
     fontWeight: "bold",
+  },
+  loadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.light.backgroundAlt,
+    borderRadius: 8,
+    height: 50,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  loadingText: {
+    marginLeft: 10,
+    color: Colors.light.text,
+  },
+  errorContainer: {
+    backgroundColor: "#ffeeee",
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: Colors.light.error,
+  },
+  errorMessage: {
+    color: Colors.light.error,
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  retryButton: {
+    backgroundColor: Colors.light.primary,
+    borderRadius: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignSelf: "flex-start",
+  },
+  retryText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 14,
   },
 });
